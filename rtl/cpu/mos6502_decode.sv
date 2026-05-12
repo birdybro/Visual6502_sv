@@ -190,6 +190,40 @@ module mos6502_decode
             8'h4C: begin addr_mode = AM_ABS; op_kind = OP_JMP; end
             8'h6C: begin addr_mode = AM_IND; op_kind = OP_JMP; end
 
+            // ----- M8: undocumented opcodes (stable subset) -----
+            // 1-byte NOP duplicates of $EA.
+            8'h1A, 8'h3A, 8'h5A, 8'h7A, 8'hDA, 8'hFA:
+                begin addr_mode = AM_IMPL; op_kind = OP_NOP; end
+            // 2-byte immediate NOPs (read at PC then discard).
+            8'h80, 8'h82, 8'h89, 8'hC2, 8'hE2:
+                begin addr_mode = AM_IMM; op_kind = OP_NOP; end
+            // 2-byte zp NOPs.
+            8'h04, 8'h44, 8'h64:
+                begin addr_mode = AM_ZP; op_kind = OP_NOP; end
+            // 2-byte zp,X NOPs.
+            8'h14, 8'h34, 8'h54, 8'h74, 8'hD4, 8'hF4:
+                begin addr_mode = AM_ZPX; op_kind = OP_NOP; end
+            // 3-byte abs NOP.
+            8'h0C:
+                begin addr_mode = AM_ABS; op_kind = OP_NOP; end
+            // 3-byte abs,X NOPs (4 or 5 cycles depending on page cross).
+            8'h1C, 8'h3C, 8'h5C, 8'h7C, 8'hDC, 8'hFC:
+                begin addr_mode = AM_ABSX; op_kind = OP_NOP; end
+            // SAX: store (A AND X). Uses STORE op kind; store_src logic
+            // routes IR[1:0]==11 to (a_q & x_q).
+            8'h87: begin addr_mode = AM_ZP;   op_kind = OP_STORE; end
+            8'h97: begin addr_mode = AM_ZPY;  op_kind = OP_STORE; end
+            8'h8F: begin addr_mode = AM_ABS;  op_kind = OP_STORE; end
+            8'h83: begin addr_mode = AM_INDX; op_kind = OP_STORE; end
+            // LAX: load both A and X. Uses LOAD op kind; load_target with
+            // IR[1:0]==11 writes both A and X.
+            8'hA7: begin addr_mode = AM_ZP;   op_kind = OP_LOAD; end
+            8'hB7: begin addr_mode = AM_ZPY;  op_kind = OP_LOAD; end
+            8'hAF: begin addr_mode = AM_ABS;  op_kind = OP_LOAD; end
+            8'hBF: begin addr_mode = AM_ABSY; op_kind = OP_LOAD; end
+            8'hA3: begin addr_mode = AM_INDX; op_kind = OP_LOAD; end
+            8'hB3: begin addr_mode = AM_INDY; op_kind = OP_LOAD; end
+
             default: begin addr_mode = AM_UNK; op_kind = OP_UNK; end
         endcase
     end

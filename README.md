@@ -10,7 +10,7 @@ core is verified against those traces.
 
 ## Status
 
-Milestone 7 (branches, page crossings, JMP indirect bug) complete; 1424 cycles of program execution across M3-M7 match the Visual6502 reference exactly on AB/DB/RW/SYNC.
+Milestone 8 (stable undocumented opcodes) complete; 1688 cycles of program execution across M3-M8 match the Visual6502 reference exactly on AB/DB/RW/SYNC.
 
 | Milestone | Status | Notes |
 |----|----|----|
@@ -21,7 +21,7 @@ Milestone 7 (branches, page crossings, JMP indirect bug) complete; 1424 cycles o
 | M5 — ALU, ADC/SBC (binary + decimal), shifts | done | ADC/SBC/AND/ORA/EOR/CMP/CPX/CPY/BIT/ASL/LSR/ROL/ROR/INC/DEC/INX/INY/DEX/DEY/flag-instr. |
 | M6 — Stack, JSR/RTS, BRK/RTI, IRQ/NMI | done | PHA/PHP/PLA/PLP, JSR/RTS, BRK/RTI, IRQ entry. NMI implemented; precise cycle alignment varies in some patterns. |
 | M7 — Branches, page crossings, JMP indirect bug | done | All 8 branches, fwd/bwd page cross, JMP abs, JMP $xxFF wrap bug. |
-| M8 — Undocumented opcodes, test ROM compatibility | pending | |
+| M8 — Undocumented opcodes, broader ROM | partial | Undoc NOPs (1/2/3-byte), SAX, LAX implemented. DCP/ISC/SLO/RLA/SRE/RRA/ANC/ALR/ARR/AXS not implemented; XAA/AHX/SHX/SHY/TAS/LAS noted as unstable. |
 | M9 — Synthesis polish, optional MiSTer wrapper | pending | |
 
 ## Repository layout

@@ -129,22 +129,26 @@ module mos6502_core
     assign indexed_dummy_skippable = !is_store && !is_rmw_mem && !idx_carry_q;
 
     // Target register for LD?/ST? from IR bits [1:0]. 00=Y, 01=A, 10=X.
+    // IR[1:0]==11 is the undocumented SAX/LAX family: store_src = A AND X,
+    // load_target writes both A and X.
     logic [7:0] store_src;
     always_comb begin
         unique case (ir_q[1:0])
             2'b00:   store_src = y_q;
             2'b01:   store_src = a_q;
             2'b10:   store_src = x_q;
+            2'b11:   store_src = a_q & x_q;   // SAX
             default: store_src = 8'h00;
         endcase
     end
-    logic [1:0] load_target;
+    logic [2:0] load_target;
     always_comb begin
         unique case (ir_q[1:0])
-            2'b00:   load_target = 2'b10; // Y
-            2'b01:   load_target = 2'b00; // A
-            2'b10:   load_target = 2'b01; // X
-            default: load_target = 2'b00;
+            2'b00:   load_target = 3'b010; // Y
+            2'b01:   load_target = 3'b000; // A
+            2'b10:   load_target = 3'b001; // X
+            2'b11:   load_target = 3'b011; // LAX (both A and X)
+            default: load_target = 3'b000;
         endcase
     end
 
@@ -1010,12 +1014,14 @@ module mos6502_core
                 rmw_target_q <= {ad_hi_q, ad_lo_q};
             end
 
-            // Load commit.
+            // Load commit (LDA/LDX/LDY/LAX). load_target: 000=A, 001=X,
+            // 010=Y, 011=both A and X (LAX).
             if (load_commit) begin
                 unique case (load_target)
-                    2'b00: a_q <= data_in;
-                    2'b01: x_q <= data_in;
-                    2'b10: y_q <= data_in;
+                    3'b000: a_q <= data_in;
+                    3'b001: x_q <= data_in;
+                    3'b010: y_q <= data_in;
+                    3'b011: begin a_q <= data_in; x_q <= data_in; end
                     default: ;
                 endcase
             end

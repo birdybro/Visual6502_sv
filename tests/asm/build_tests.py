@@ -333,12 +333,55 @@ def m7_branches():
     )
 
 
+def m8_undoc():
+    """Exercises stable undocumented NMOS opcodes: NOPs of all forms, SAX, LAX."""
+    prog = [
+        # 1-byte undoc NOPs
+        0x1A,                   # NOP (undoc, implied)
+        0x3A,
+        # 2-byte imm NOPs (consume operand)
+        0x80, 0x11,             # NOP #$11
+        0x82, 0x22,
+        0xC2, 0x33,
+        # 2-byte zp NOPs
+        0x04, 0x80,             # NOP $80
+        0x44, 0x81,
+        # 2-byte zp,X NOPs
+        0xA2, 0x05,             # LDX #$05
+        0x14, 0x10,             # NOP $10,X (reads $15)
+        0x34, 0x20,
+        # 3-byte abs NOP
+        0x0C, 0x00, 0x02,       # NOP $0200
+        # 3-byte abs,X NOP (no page cross)
+        0x1C, 0x00, 0x02,       # NOP $0200,X (reads $0205)
+        # SAX zp: store A AND X at $90
+        0xA9, 0xFF,             # LDA #$FF
+        0xA2, 0xAA,             # LDX #$AA
+        0x87, 0x90,             # SAX $90  -> mem[$90] = $FF & $AA = $AA
+        # SAX abs
+        0x8F, 0x00, 0x02,       # SAX $0200 -> mem[$0200] = $AA
+        # LAX zp: load both A and X
+        0xA9, 0x77,             # LDA #$77 (will be overwritten)
+        0xA7, 0x90,             # LAX $90  -> A = X = mem[$90] = $AA
+        # LAX abs
+        0xAF, 0x00, 0x02,       # LAX $0200 -> A = X = $AA
+        # LAX (zp),Y
+        0xA9, 0x90, 0x85, 0xA0, # LDA #$90; STA $A0
+        0xA9, 0x00, 0x85, 0xA1, # LDA #$00; STA $A1
+        0xA0, 0x00,             # LDY #$00
+        0xB3, 0xA0,             # LAX ($A0),Y -> reads $0090 = $AA
+        # Done — NOP forever.
+    ]
+    return prog
+
+
 TESTS = {
     "nop_loop": (m3_nop, 0x0000),
     "m4_loadstore": (m4_loadstore, 0x0000),
     "m5_alu": (m5_alu, 0x0000),
     "m6_stack_subroutines": (m6_stack_subroutines, None),
     "m7_branches": (m7_branches, None),
+    "m8_undoc": (m8_undoc, 0x0000),
 }
 
 

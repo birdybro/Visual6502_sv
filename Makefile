@@ -43,7 +43,7 @@ TRACE_DIR   := $(ROOT_DIR)/tests/traces
 # ---- Targets ----------------------------------------------------------------
 
 .PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check \
-        test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7
+        test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8
 
 all: sim
 
@@ -58,7 +58,7 @@ $(SIM_BIN): $(RTL_SRCS) $(TB_CPP)
 	@echo ">>> verilator build"
 	$(VERILATOR) $(VFLAGS_BUILD) $(RTL_SRCS) $(TB_CPP)
 
-test: sim trace-self-check test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7
+test: sim trace-self-check test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8
 	@echo "all tests OK"
 
 # ---- Per-milestone RTL tests -----------------------------------------------
@@ -157,6 +157,23 @@ test-m7: sim tests/asm/m7_branches.bin
 
 tests/asm/m7_branches.bin: tests/asm/build_tests.py
 	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m7_branches --out $@
+
+M8_UNDOC_BIN := $(ROOT_DIR)/tests/asm/m8_undoc.bin
+
+# M8: stable undocumented NMOS opcodes — NOPs (1/2/3 byte), SAX, LAX.
+# 264 cycles match the Visual6502 reference.
+test-m8: sim tests/asm/m8_undoc.bin
+	@echo ">>> M8 test: undocumented NOPs + SAX + LAX"
+	$(SIM_BIN) +mem=$(M8_UNDOC_BIN) +cycles=270 \
+	        +trace=$(RTL_TRACE_DIR)/rtl_m8_undoc.tsv +quiet
+	$(PYTHON) $(TRACE_CMP) $(TRACE_DIR)/m8_undoc.tsv \
+	        $(RTL_TRACE_DIR)/rtl_m8_undoc.tsv \
+	        --ref-skip $(REF_SKIP_TO_FETCH) --rtl-skip $(RTL_SKIP_TO_FETCH) \
+	        --fields ab,db,rw,sync
+	@echo "M8 OK"
+
+tests/asm/m8_undoc.bin: tests/asm/build_tests.py
+	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m8_undoc --out $@
 
 # M6 IRQ injection: re-runs the M6 program with irq_n asserted at cycle 100
 # (ref) / 97 (rtl). 224 cycles match (covers main program + IRQ entry +

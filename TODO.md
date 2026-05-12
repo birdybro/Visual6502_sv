@@ -106,12 +106,22 @@ Living checklist. Update as work progresses. Items marked `[x]` are done,
 
 ## Milestone 8 — Undocumented opcodes + ROM compatibility
 
-- [ ] Survey: which undocumented opcodes are stable on NMOS 6502 per the
-      visual6502 net data + Klaus Dormann tests.
-- [ ] Implement the deterministic ones (SAX, LAX, DCP, ISC, SLO, RLA, SRE, RRA,
-      ANC, ALR, ARR, AXS, XAA, AHX, SHX, SHY, TAS, LAS — last few are unstable).
-- [ ] Mark unstable ones (e.g. XAA) with the documented "magic constant" behavior.
-- [ ] Run Klaus Dormann functional test ROM to completion.
+- [x] Undocumented NOPs (1/2/3-byte forms): $1A/$3A/$5A/$7A/$DA/$FA;
+      $80/$82/$89/$C2/$E2; $04/$44/$64; $14/$34/$54/$74/$D4/$F4;
+      $0C; $1C/$3C/$5C/$7C/$DC/$FC.
+- [x] SAX (store A & X): $87/$97/$8F/$83.
+- [x] LAX (load both A and X): $A7/$B7/$AF/$BF/$A3/$B3.
+- [x] 264 cycles match Visual6502 (`make test-m8`).
+- [ ] DCP / ISC: combined RMW + CMP/SBC. Needs the RMW final-write state
+      to also affect A's flags. Future work.
+- [ ] SLO / RLA / SRE / RRA: combined RMW shift + ALU on A. Future work.
+- [ ] ANC / ALR / ARR / AXS: 2-cycle immediate ALU combinations.
+      Future work.
+- [ ] Unstable: XAA / AHX / SHX / SHY / TAS / LAS — behavior depends on
+      transistor analog state (not modeled in clean RTL). Will document as
+      "unimplemented; emit a $EA-equivalent placeholder behavior."
+- [ ] Klaus Dormann 6502 functional test ROM end-to-end run. Requires the
+      DCP/ISC/SLO/RLA family for full compatibility.
 
 ## Milestone 9 — Synthesis polish
 
