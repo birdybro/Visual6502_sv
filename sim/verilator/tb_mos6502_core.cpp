@@ -137,39 +137,23 @@ int main(int argc, char **argv) {
     uint64_t sim_time = 0;
 
     // Drive one bus cycle and emit one trace row.
-    // We model the bus as: address is valid throughout the cycle, memory
-    // presents data_in continuously, rising clk samples both. For writes, we
-    // capture data_out at the falling edge (just before the next rising edge).
+    //
+    // Cycle model: AB, RW, and data_out are combinational from state_q. The
+    // bus action for THIS cycle happens BEFORE we advance to the next state.
+    // So the order is:
+    //   1. Commit any write (mem[AB] <= data_out).
+    //   2. Drive data_in for the CPU's read latch on the next rising edge.
+    //   3. Emit the trace row reflecting this cycle's bus state.
+    //   4. Rising edge → state advances; AB/RW change to next cycle's values.
     auto run_cycle = [&](int cycle_idx) -> void {
-        // Address is combinational from current state; ensure data_in
-        // reflects current address before the rising edge.
-        dut->data_in = mem[dut->address];
-        if (tfp) tfp->dump(sim_time);
-        sim_time += 1;
-
-        dut->clk = 1;
-        dut->eval();
-        if (tfp) tfp->dump(sim_time);
-        sim_time += 1;
-
-        // After the rising edge, state and registers have updated. If the
-        // PREVIOUS cycle was a write, sample data_out and commit to memory
-        // BEFORE the new address takes effect via the new state -> AB path.
-        // In our single-edge model, address_d updates combinationally on the
-        // rising edge based on state_d, so we sample using "rw==0 at this
-        // post-edge point reflects the just-issued bus action" only if we
-        // are careful.
-        //
-        // Simpler model: rw and address_d are both combinational from the
-        // current state_q (now the just-loaded state_d). The write happens on
-        // the SAME cycle. We capture (address, rw, data_out) once and act on
-        // it now; the trace reflects the post-edge snapshot, matching how the
-        // Visual6502 reference samples at end-of-cycle.
+        // 1. Write commit
         if (!dut->rw) {
             mem[dut->address] = dut->data_out;
         }
+        // 2. Drive data_in for the CPU
+        dut->data_in = mem[dut->address];
 
-        // Emit trace row sampled at the end of the cycle.
+        // 3. Trace row for this cycle
         std::fprintf(tf,
                      "%d\t1\t%04x\t%02x\t%d\t%d\t%02x\t%02x\t%02x\t%02x\t%02x\t%04x\t%02x\n",
                      cycle_idx,
@@ -177,12 +161,17 @@ int main(int argc, char **argv) {
                      static_cast<unsigned>(mem[dut->address] & 0xFF),
                      dut->rw ? 1 : 0,
                      dut->sync ? 1 : 0,
-                     // Register-file fields not yet exposed by the module
-                     // boundary. Reported as zero for now; the trace
-                     // comparator filters via --fields.
+                     // Register fields not yet exposed; zero for now.
                      0, 0, 0, 0, 0, 0, 0);
 
-        // Falling edge.
+        if (tfp) tfp->dump(sim_time);
+        sim_time += 1;
+
+        // 4. Advance: rising then falling.
+        dut->clk = 1;
+        dut->eval();
+        if (tfp) tfp->dump(sim_time);
+        sim_time += 1;
         dut->clk = 0;
         dut->eval();
     };

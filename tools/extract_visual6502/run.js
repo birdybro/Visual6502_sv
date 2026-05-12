@@ -86,11 +86,17 @@ function hex(n, w) { return (n >>> 0).toString(16).padStart(w, '0'); }
 
 let cycle = 0;
 function record() {
+    // For DB we report memory[AB] (the bus value the CPU and memory agree on
+    // for this cycle): a fresh read sees the byte memory just drove; a write
+    // sees the byte that was just committed. readDataBus() reflects the
+    // CURRENT pullup/pulldown state of the db nodes which can be stale on
+    // write cycles after the chip has stopped driving the bus.
+    const ab = v.readAddressBus();
     out.write([
         cycle,
         v.isNodeHigh(v.nodenames['clk0']) ? 1 : 0,
-        hex(v.readAddressBus(), 4),
-        hex(v.readDataBus(), 2),
+        hex(ab, 4),
+        hex(v.mRead(ab), 2),
         v.isNodeHigh(v.nodenames['rw']) ? 1 : 0,
         v.isNodeHigh(v.nodenames['sync']) ? 1 : 0,
         hex(v.readA(), 2),
@@ -103,14 +109,16 @@ function record() {
     ].join('\t') + '\n');
 }
 
-// Trace cadence: emit one record per completed bus cycle (= 2 halfsteps).
-// After halfStep #2, clk0 is high (it was low after halfStep #1 because the
-// initChip sequence ends with clk0 low). Sample at the canonical end-of-cycle
-// state — same point chipStatus() typically observes.
+// Trace cadence: one record per bus cycle, sampled right after the phi2
+// transition (when reads have been driven onto db by memory and writes have
+// just been committed to memory). After initChip(skip=0), clk0 is LOW. The
+// first halfStep enters phi2 (clk0 → high) and runs handleBusWrite; that's
+// the point at which writes commit. We record there, *before* the second
+// halfStep enters phi1 of the next cycle and starts changing AB/RW.
 for (let c = 0; c < cycles; c++) {
-    v.halfStep();
-    v.halfStep();
+    v.halfStep();   // enter phi2: writes commit, db carries the cycle's data
     record();
+    v.halfStep();   // enter phi1 of next cycle: CPU presents new outputs
     cycle++;
 }
 

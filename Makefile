@@ -42,7 +42,8 @@ TRACE_DIR   := $(ROOT_DIR)/tests/traces
 
 # ---- Targets ----------------------------------------------------------------
 
-.PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check test-m3
+.PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check \
+        test-m3 test-m4
 
 all: sim
 
@@ -57,7 +58,7 @@ $(SIM_BIN): $(RTL_SRCS) $(TB_CPP)
 	@echo ">>> verilator build"
 	$(VERILATOR) $(VFLAGS_BUILD) $(RTL_SRCS) $(TB_CPP)
 
-test: sim trace-self-check test-m3
+test: sim trace-self-check test-m3 test-m4
 	@echo "all tests OK"
 
 # ---- Per-milestone RTL tests -----------------------------------------------
@@ -72,16 +73,40 @@ test: sim trace-self-check test-m3
 RTL_TRACE_DIR := $(TRACE_DIR)
 NOP_LOOP_BIN  := $(ROOT_DIR)/tests/asm/nop_loop.bin
 
-# M3: reset + opcode fetch + NOP. Verifies 64 cycles of bus activity against
-# the Visual6502 NOP-loop reference (200+ cycles available; we compare 64).
+M4_LOADSTORE_BIN := $(ROOT_DIR)/tests/asm/m4_loadstore.bin
+
+# Trace cadence alignment: Visual6502 has 3 power-on settling cycles and one
+# more before R0 of the reset takes deterministic effect; the RTL has none.
+# So skip 9 ref / 6 rtl to align both traces on the first opcode fetch.
+REF_SKIP_TO_FETCH := 9
+RTL_SKIP_TO_FETCH := 6
+
+# M3: reset + opcode fetch + NOP. Compares the RTL bus against the Visual6502
+# NOP-loop reference from the first opcode fetch onwards.
 test-m3: sim
 	@echo ">>> M3 test: reset + fetch + NOP"
-	$(SIM_BIN) +mem=$(NOP_LOOP_BIN) +cycles=64 \
+	$(SIM_BIN) +mem=$(NOP_LOOP_BIN) +cycles=80 \
 	        +trace=$(RTL_TRACE_DIR)/rtl_nop_loop.tsv +quiet
 	$(PYTHON) $(TRACE_CMP) $(TRACE_DIR)/nop_loop.tsv \
 	        $(RTL_TRACE_DIR)/rtl_nop_loop.tsv \
-	        --ref-skip 3 --fields ab,db,rw,sync --max-cycles 64
+	        --ref-skip $(REF_SKIP_TO_FETCH) --rtl-skip $(RTL_SKIP_TO_FETCH) \
+	        --fields ab,db,rw,sync
 	@echo "M3 OK"
+
+# M4: load/store/transfer across every addressing mode and the page-crossing
+# dummy cycle on indexed loads/stores. 194 cycles of program execution.
+test-m4: sim tests/asm/m4_loadstore.bin
+	@echo ">>> M4 test: loads/stores/transfers across all addressing modes"
+	$(SIM_BIN) +mem=$(M4_LOADSTORE_BIN) +cycles=200 \
+	        +trace=$(RTL_TRACE_DIR)/rtl_m4_loadstore.tsv +quiet
+	$(PYTHON) $(TRACE_CMP) $(TRACE_DIR)/m4_loadstore.tsv \
+	        $(RTL_TRACE_DIR)/rtl_m4_loadstore.tsv \
+	        --ref-skip $(REF_SKIP_TO_FETCH) --rtl-skip $(RTL_SKIP_TO_FETCH) \
+	        --fields ab,db,rw,sync
+	@echo "M4 OK"
+
+tests/asm/m4_loadstore.bin: tests/asm/build_tests.py
+	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m4_loadstore --out $@
 
 # ---- M2: Visual6502 reference trace targets --------------------------------
 

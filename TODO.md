@@ -45,13 +45,15 @@ Living checklist. Update as work progresses. Items marked `[x]` are done,
 
 ## Milestone 4 — Loads / stores / transfers
 
-- [ ] Register file (A, X, Y, S, P, PC) with appropriate write enables.
-- [ ] Addressing modes: immediate, zero page, zp,X / zp,Y, abs, abs,X / abs,Y,
+- [x] Register file (A, X, Y, S, P, PC) with synchronous write enables.
+- [x] Addressing modes: immediate, zero page, zp,X / zp,Y, abs, abs,X / abs,Y,
       (zp,X), (zp),Y.
-- [ ] Instructions: LDA, LDX, LDY, STA, STX, STY.
-- [ ] Transfers: TAX, TAY, TXA, TYA, TSX, TXS.
-- [ ] Flag updates: N, Z on loads/transfers.
-- [ ] Trace tests for each mode × each instruction.
+- [x] Page-crossing dummy cycle: skipped on loads with no cross, always
+      taken on stores.
+- [x] Instructions: LDA, LDX, LDY, STA, STX, STY.
+- [x] Transfers: TAX, TAY, TXA, TYA, TSX, TXS.
+- [x] Flag updates: N, Z on loads and on transfers except TXS.
+- [x] `make test-m4` passes 194 cycles against Visual6502.
 
 ## Milestone 5 — ALU
 
