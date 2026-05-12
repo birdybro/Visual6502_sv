@@ -52,6 +52,9 @@ let output = null;
 let prog = null;
 let noProgram = false;
 let skipHalfsteps = 18;
+let irqAt = -1;
+let irqDur = 4;
+let nmiAt = -1;
 
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
@@ -63,6 +66,9 @@ for (let i = 0; i < args.length; i++) {
     else if (a === '--no-program') noProgram = true;
     else if (a === '--include-reset') skipHalfsteps = 0;
     else if (a === '--skip-halfsteps') skipHalfsteps = parseInt(args[++i], 10);
+    else if (a === '--irq-at') irqAt = parseInt(args[++i], 10);
+    else if (a === '--irq-dur') irqDur = parseInt(args[++i], 10);
+    else if (a === '--nmi-at') nmiAt = parseInt(args[++i], 10);
     else if (a === '-h' || a === '--help') usage(0);
     else if (!a.startsWith('-')) prog = a;
     else { process.stderr.write('Unknown arg: ' + a + '\n'); usage(2); }
@@ -116,6 +122,12 @@ function record() {
 // the point at which writes commit. We record there, *before* the second
 // halfStep enters phi1 of the next cycle and starts changing AB/RW.
 for (let c = 0; c < cycles; c++) {
+    // Drive interrupt pins for this cycle, before the bus action commits.
+    if (irqAt >= 0 && c >= irqAt && c < irqAt + irqDur) v.setLow('irq');
+    else v.setHigh('irq');
+    if (nmiAt >= 0 && c === nmiAt) v.setLow('nmi');
+    else if (nmiAt >= 0 && c === nmiAt + 1) v.setHigh('nmi');
+
     v.halfStep();   // enter phi2: writes commit, db carries the cycle's data
     record();
     v.halfStep();   // enter phi1 of next cycle: CPU presents new outputs

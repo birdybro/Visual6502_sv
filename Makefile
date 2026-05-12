@@ -43,7 +43,7 @@ TRACE_DIR   := $(ROOT_DIR)/tests/traces
 # ---- Targets ----------------------------------------------------------------
 
 .PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check \
-        test-m3 test-m4 test-m5
+        test-m3 test-m4 test-m5 test-m6 test-m6-irq
 
 all: sim
 
@@ -58,7 +58,7 @@ $(SIM_BIN): $(RTL_SRCS) $(TB_CPP)
 	@echo ">>> verilator build"
 	$(VERILATOR) $(VFLAGS_BUILD) $(RTL_SRCS) $(TB_CPP)
 
-test: sim trace-self-check test-m3 test-m4 test-m5
+test: sim trace-self-check test-m3 test-m4 test-m5 test-m6 test-m6-irq
 	@echo "all tests OK"
 
 # ---- Per-milestone RTL tests -----------------------------------------------
@@ -124,6 +124,37 @@ test-m5: sim tests/asm/m5_alu.bin
 
 tests/asm/m5_alu.bin: tests/asm/build_tests.py
 	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m5_alu --out $@
+
+M6_STACK_BIN := $(ROOT_DIR)/tests/asm/m6_stack.bin
+
+# M6: stack push/pull, JSR/RTS, BRK/RTI. 174 cycles.
+test-m6: sim tests/asm/m6_stack.bin
+	@echo ">>> M6 test: stack, JSR/RTS, BRK/RTI"
+	$(SIM_BIN) +mem=$(M6_STACK_BIN) +cycles=180 \
+	        +trace=$(RTL_TRACE_DIR)/rtl_m6_stack.tsv +quiet
+	$(PYTHON) $(TRACE_CMP) $(TRACE_DIR)/m6_stack.tsv \
+	        $(RTL_TRACE_DIR)/rtl_m6_stack.tsv \
+	        --ref-skip $(REF_SKIP_TO_FETCH) --rtl-skip $(RTL_SKIP_TO_FETCH) \
+	        --fields ab,db,rw,sync
+	@echo "M6 OK"
+
+tests/asm/m6_stack.bin: tests/asm/build_tests.py
+	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m6_stack_subroutines --out $@
+
+# M6 IRQ injection: re-runs the M6 program with irq_n asserted at cycle 100
+# (ref) / 97 (rtl). 224 cycles match (covers main program + IRQ entry +
+# RTI return + post-RTI execution).
+test-m6-irq: sim tests/asm/m6_stack.bin
+	@echo ">>> M6 IRQ test: irq_n pulse during program"
+	$(NODE) $(REF_RUN) $(M6_STACK_BIN) --include-reset --cycles 250 \
+	        --irq-at 100 --output $(TRACE_DIR)/m6_irq.tsv
+	$(SIM_BIN) +mem=$(M6_STACK_BIN) +cycles=230 +irq_at=97 \
+	        +trace=$(RTL_TRACE_DIR)/rtl_m6_irq.tsv +quiet
+	$(PYTHON) $(TRACE_CMP) $(TRACE_DIR)/m6_irq.tsv \
+	        $(RTL_TRACE_DIR)/rtl_m6_irq.tsv \
+	        --ref-skip $(REF_SKIP_TO_FETCH) --rtl-skip $(RTL_SKIP_TO_FETCH) \
+	        --fields ab,db,rw,sync
+	@echo "M6-IRQ OK"
 
 # ---- M2: Visual6502 reference trace targets --------------------------------
 

@@ -84,6 +84,12 @@ int main(int argc, char **argv) {
     const char *trace_path   = get_plusarg(argc, argv, "trace");
     const char *vcd_path     = get_plusarg(argc, argv, "vcd");
     const bool quiet         = get_plusarg(argc, argv, "quiet") != nullptr;
+    const char *irq_at_s     = get_plusarg(argc, argv, "irq_at");
+    const char *irq_dur_s    = get_plusarg(argc, argv, "irq_dur");
+    const char *nmi_at_s     = get_plusarg(argc, argv, "nmi_at");
+    int irq_at  = irq_at_s  ? static_cast<int>(parse_num(irq_at_s))  : -1;
+    int irq_dur = irq_dur_s ? static_cast<int>(parse_num(irq_dur_s)) : 4;
+    int nmi_at  = nmi_at_s  ? static_cast<int>(parse_num(nmi_at_s))  : -1;
 
     uint32_t load_addr = load_addr_s ? parse_num(load_addr_s) : 0x0000;
     uint32_t reset_vec = reset_vec_s ? parse_num(reset_vec_s) : load_addr;
@@ -189,6 +195,16 @@ int main(int argc, char **argv) {
     dut->reset_n = 1;
 
     for (int c = 0; c < max_cycles && !Verilated::gotFinish(); ++c) {
+        if (irq_at >= 0 && c >= irq_at && c < irq_at + irq_dur) {
+            dut->irq_n = 0;
+        } else {
+            dut->irq_n = 1;
+        }
+        if (nmi_at >= 0 && c == nmi_at) {
+            dut->nmi_n = 0;
+        } else if (nmi_at >= 0 && c == nmi_at + 1) {
+            dut->nmi_n = 1;   // pulse, then deassert (edge-triggered)
+        }
         run_cycle(c);
     }
 

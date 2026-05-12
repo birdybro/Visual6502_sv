@@ -20,6 +20,22 @@ def make_bin(bytes_, size=0x10000, pad=0xEA):
     return bytes(out)
 
 
+def make_bin_blocks(blocks, vectors=None, size=0x10000, pad=0xEA):
+    """Lay out multiple blocks at specific addresses.
+
+    blocks: list of (addr, list-of-bytes)
+    vectors: optional dict {0xFFFA: ..., 0xFFFC: ..., 0xFFFE: ...} for vectors
+    """
+    out = bytearray([pad] * size)
+    for addr, data in blocks:
+        for i, b in enumerate(data):
+            out[(addr + i) & 0xFFFF] = b & 0xFF
+    if vectors:
+        for addr, val in vectors.items():
+            out[addr & 0xFFFF] = val & 0xFF
+    return bytes(out)
+
+
 def m3_nop():
     # M3 sanity: 256 NOPs, then NOPs (same as the original nop_loop).
     return [0xEA] * 256
@@ -183,10 +199,60 @@ def m5_alu():
     return prog
 
 
+def m6_stack_subroutines():
+    """Builder that lays out main + sub + BRK handler at fixed addresses.
+
+    Returns a fully-formed 64KB image and lets the caller skip the default
+    contiguous-bytes packaging. Signaled by returning a special sentinel.
+    """
+    main = [
+        # ----- Stack push/pull -----
+        0xA9, 0x11,             # $0000: LDA #$11
+        0x48,                   # $0002: PHA
+        0xA9, 0x22,             # $0003: LDA #$22
+        0x48,                   # $0005: PHA
+        0x68,                   # $0006: PLA  -> A=$22
+        0x68,                   # $0007: PLA  -> A=$11
+        # ----- PHP / PLP -----
+        0xA9, 0x55,             # $0008: LDA #$55
+        0x38,                   # $000A: SEC
+        0x08,                   # $000B: PHP
+        0x18,                   # $000C: CLC
+        0x28,                   # $000D: PLP  (restores C=1)
+        # ----- JSR / RTS -----
+        0x20, 0x30, 0x00,       # $000E: JSR $0030 (sub)
+        0xA9, 0xAA,             # $0011: LDA #$AA  (after return)
+        # ----- BRK / RTI -----
+        0x00,                   # $0013: BRK (1-byte opcode, then signature)
+        0xEA,                   # $0014: signature byte (skipped by BRK)
+        0xA9, 0xBB,             # $0015: LDA #$BB (after RTI)
+        # Fall through to NOP pad.
+    ]
+    sub = [
+        0xA2, 0x42,             # $0030: LDX #$42
+        0xA0, 0x33,             # $0032: LDY #$33
+        0x60,                   # $0034: RTS
+    ]
+    brk_handler = [
+        0xA9, 0x77,             # $0080: LDA #$77
+        0xA2, 0x99,             # $0082: LDX #$99
+        0x40,                   # $0084: RTI
+    ]
+    return make_bin_blocks(
+        blocks=[(0x0000, main), (0x0030, sub), (0x0080, brk_handler)],
+        vectors={
+            0xFFFC: 0x00, 0xFFFD: 0x00,   # reset
+            0xFFFE: 0x80, 0xFFFF: 0x00,   # IRQ/BRK -> $0080
+            0xFFFA: 0x80, 0xFFFB: 0x00,   # NMI -> same handler
+        },
+    )
+
+
 TESTS = {
     "nop_loop": (m3_nop, 0x0000),
     "m4_loadstore": (m4_loadstore, 0x0000),
     "m5_alu": (m5_alu, 0x0000),
+    "m6_stack_subroutines": (m6_stack_subroutines, None),  # None signals pre-built image
 }
 
 
@@ -198,12 +264,19 @@ def main():
 
     builder, load_addr = TESTS[args.name]
     prog = builder()
-    bin_ = make_bin(prog)
-    # We store the full 64KB image. The harness loads at +load_addr=0x0000.
+    if load_addr is None:
+        # Builder returned a complete 64KB image (multi-block layout).
+        bin_ = prog
+    else:
+        bin_ = make_bin(prog)
     with open(args.out, "wb") as f:
         f.write(bin_)
-    sys.stderr.write("wrote %s (%d bytes, %d program bytes)\n"
-                     % (args.out, len(bin_), len(prog)))
+    if load_addr is None:
+        sys.stderr.write("wrote %s (%d bytes, multi-block layout)\n"
+                         % (args.out, len(bin_)))
+    else:
+        sys.stderr.write("wrote %s (%d bytes, %d program bytes)\n"
+                         % (args.out, len(bin_), len(prog)))
 
 
 if __name__ == "__main__":

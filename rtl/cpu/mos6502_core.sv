@@ -40,7 +40,7 @@ module mos6502_core
     // ------------------------------------------------------------------------
     // State enumeration.
     // ------------------------------------------------------------------------
-    typedef enum logic [5:0] {
+    typedef enum logic [6:0] {
         S_RESET_0, S_RESET_1, S_RESET_2, S_RESET_3, S_RESET_4, S_RESET_5,
         S_FETCH,
         S_T1_DUMMY,
@@ -51,9 +51,22 @@ module mos6502_core
         S_ABSI_LO,    S_ABSI_HI,    S_ABSI_DUMMY, S_ABSI_RW,
         S_INDX_ZP,    S_INDX_DUMMY, S_INDX_LO,    S_INDX_HI,   S_INDX_RW,
         S_INDY_ZP,    S_INDY_LO,    S_INDY_HI,    S_INDY_DUMMY, S_INDY_RW,
-        // RMW tail (after a *_RW that reads the memory operand for RMW).
-        S_RMW_DUMMY_WRITE,    // write old value back to memory
-        S_RMW_WRITE,          // write new (ALU-computed) value
+        // RMW tail.
+        S_RMW_DUMMY_WRITE, S_RMW_WRITE,
+        // Stack (PHA/PHP/PLA/PLP).
+        S_PUSH_T1,    S_PUSH_T2,
+        S_PULL_T1,    S_PULL_T2,    S_PULL_T3,
+        // JSR.
+        S_JSR_LO,     S_JSR_PEEK,   S_JSR_PUSH_PCH, S_JSR_PUSH_PCL, S_JSR_HI,
+        // RTS.
+        S_RTS_T1,     S_RTS_PEEK,   S_RTS_PULL_PCL, S_RTS_PULL_PCH, S_RTS_INC,
+        // RTI.
+        S_RTI_T1,     S_RTI_PEEK,   S_RTI_PULL_P,   S_RTI_PULL_PCL, S_RTI_PULL_PCH,
+        // BRK / IRQ / NMI entry. BRK reaches S_INT_T1 from FETCH;
+        // IRQ/NMI go through S_INT_T0 first.
+        S_INT_T0,     S_INT_T1,
+        S_INT_PUSH_PCH, S_INT_PUSH_PCL, S_INT_PUSH_P,
+        S_INT_VEC_LO, S_INT_VEC_HI,
         S_HALT
     } state_e;
 
@@ -66,8 +79,16 @@ module mos6502_core
     logic [15:0] pc_q;
     logic [7:0]  ad_lo_q, ad_hi_q, ptr_q;
     logic        idx_carry_q;
-    logic [7:0]  alu_in_q;    // byte under RMW
-    logic [15:0] rmw_target_q;// captured target address for the RMW write cycles
+    logic [7:0]  alu_in_q;
+    logic [15:0] rmw_target_q;
+    // Interrupt entry mode and pending latches. The testbench drives clean
+    // synchronous inputs in our environment so we sample nmi_n / irq_n
+    // directly (no synchronizer chain). If integrating with a real async
+    // pin source, add a synchronizer at the boundary.
+    typedef enum logic [1:0] { INT_BRK, INT_IRQ, INT_NMI, INT_RESET } int_mode_e;
+    int_mode_e   int_mode_q;
+    logic        nmi_n_prev_q;
+    logic        nmi_pending_q;
 
     // ------------------------------------------------------------------------
     // Decode (current IR and look-ahead on incoming DB during S_FETCH).
@@ -218,20 +239,34 @@ module mos6502_core
     // - For OP_RMW final write: alu_result
     // Memory address comes from {ad_hi, ad_lo} for all RMW write cycles.
 
-    function automatic state_e first_state_for(input addr_mode_e m);
-        unique case (m)
-            AM_IMPL: first_state_for = S_T1_DUMMY;
-            AM_ACC:  first_state_for = S_T1_DUMMY;
-            AM_IMM:  first_state_for = S_IMM_RW;
-            AM_ZP:   first_state_for = S_ZP_ADDR;
-            AM_ZPX:  first_state_for = S_ZPI_ADDR;
-            AM_ZPY:  first_state_for = S_ZPI_ADDR;
-            AM_ABS:  first_state_for = S_ABS_LO;
-            AM_ABSX: first_state_for = S_ABSI_LO;
-            AM_ABSY: first_state_for = S_ABSI_LO;
-            AM_INDX: first_state_for = S_INDX_ZP;
-            AM_INDY: first_state_for = S_INDY_ZP;
-            default: first_state_for = S_T1_DUMMY;
+    function automatic state_e first_state_for(input addr_mode_e m,
+                                               input op_kind_e   o);
+        // Op-kind-specific dispatch overrides addressing-mode dispatch for
+        // the "special" instructions whose cycle layout does not follow the
+        // generic addr-mode template.
+        unique case (o)
+            OP_JSR:  first_state_for = S_JSR_LO;
+            OP_RTS:  first_state_for = S_RTS_T1;
+            OP_RTI:  first_state_for = S_RTI_T1;
+            OP_BRK:  first_state_for = S_INT_T1;   // BRK shares T1 onwards
+            OP_PUSH: first_state_for = S_PUSH_T1;
+            OP_PULL: first_state_for = S_PULL_T1;
+            default: begin
+                unique case (m)
+                    AM_IMPL: first_state_for = S_T1_DUMMY;
+                    AM_ACC:  first_state_for = S_T1_DUMMY;
+                    AM_IMM:  first_state_for = S_IMM_RW;
+                    AM_ZP:   first_state_for = S_ZP_ADDR;
+                    AM_ZPX:  first_state_for = S_ZPI_ADDR;
+                    AM_ZPY:  first_state_for = S_ZPI_ADDR;
+                    AM_ABS:  first_state_for = S_ABS_LO;
+                    AM_ABSX: first_state_for = S_ABSI_LO;
+                    AM_ABSY: first_state_for = S_ABSI_LO;
+                    AM_INDX: first_state_for = S_INDX_ZP;
+                    AM_INDY: first_state_for = S_INDY_ZP;
+                    default: first_state_for = S_T1_DUMMY;
+                endcase
+            end
         endcase
     endfunction
 
@@ -258,8 +293,19 @@ module mos6502_core
 
             S_FETCH: begin
                 address_d = pc_q;
-                sync_d    = 1'b1;
-                state_d   = first_state_for(am_next);
+                // If an interrupt is pending (NMI edge or unmasked IRQ), the
+                // fetched byte is discarded and we enter the interrupt
+                // sequence instead. sync still asserts (the bus cycle is
+                // identical from the outside) — actually the 6502 suppresses
+                // SYNC during forced-BRK; emulate that. The first integration
+                // pass keeps SYNC high so it doesn't affect bus equivalence.
+                if (nmi_pending_q || (!irq_n && !p_q[2])) begin
+                    sync_d  = 1'b0;
+                    state_d = S_INT_T0;
+                end else begin
+                    sync_d  = 1'b1;
+                    state_d = first_state_for(am_next, opk_next);
+                end
             end
 
             S_T1_DUMMY: begin
@@ -359,6 +405,112 @@ module mos6502_core
                 rw_d       = 1'b0;
                 data_out_d = alu_result;
                 state_d    = S_FETCH;
+            end
+
+            // ---- Stack push (PHA/PHP) ----
+            S_PUSH_T1: begin
+                address_d = pc_q;
+                state_d   = S_PUSH_T2;
+            end
+            S_PUSH_T2: begin
+                address_d  = {8'h01, s_q};
+                rw_d       = 1'b0;
+                // PHA pushes A; PHP pushes P with bits 4 and 5 set.
+                data_out_d = (ir_q == 8'h08) ? (p_q | 8'h30) : a_q;
+                state_d    = S_FETCH;
+            end
+
+            // ---- Stack pull (PLA/PLP) ----
+            S_PULL_T1: begin
+                address_d = pc_q;
+                state_d   = S_PULL_T2;
+            end
+            S_PULL_T2: begin
+                address_d = {8'h01, s_q};
+                state_d   = S_PULL_T3;
+            end
+            S_PULL_T3: begin
+                address_d = {8'h01, s_q + 8'h01};
+                state_d   = S_FETCH;
+            end
+
+            // ---- JSR ----
+            S_JSR_LO:        begin address_d = pc_q;                  state_d = S_JSR_PEEK;     end
+            S_JSR_PEEK:      begin address_d = {8'h01, s_q};          state_d = S_JSR_PUSH_PCH; end
+            S_JSR_PUSH_PCH: begin
+                address_d  = {8'h01, s_q};
+                rw_d       = 1'b0;
+                data_out_d = pc_q[15:8];
+                state_d    = S_JSR_PUSH_PCL;
+            end
+            S_JSR_PUSH_PCL: begin
+                address_d  = {8'h01, s_q};
+                rw_d       = 1'b0;
+                data_out_d = pc_q[7:0];
+                state_d    = S_JSR_HI;
+            end
+            S_JSR_HI: begin
+                // Fetch the high byte of the target. PC is still at the
+                // address of that byte (incremented past the low byte during
+                // S_JSR_LO's PC++).
+                address_d = pc_q;
+                state_d   = S_FETCH;
+            end
+
+            // ---- RTS ----
+            S_RTS_T1:         begin address_d = pc_q;                state_d = S_RTS_PEEK;     end
+            S_RTS_PEEK:       begin address_d = {8'h01, s_q};        state_d = S_RTS_PULL_PCL; end
+            S_RTS_PULL_PCL:   begin address_d = {8'h01, s_q + 8'h01}; state_d = S_RTS_PULL_PCH; end
+            S_RTS_PULL_PCH:   begin address_d = {8'h01, s_q + 8'h01}; state_d = S_RTS_INC;     end
+            S_RTS_INC:        begin address_d = pc_q;                state_d = S_FETCH;        end
+
+            // ---- RTI ----
+            S_RTI_T1:         begin address_d = pc_q;                state_d = S_RTI_PEEK;    end
+            S_RTI_PEEK:       begin address_d = {8'h01, s_q};        state_d = S_RTI_PULL_P;  end
+            S_RTI_PULL_P:     begin address_d = {8'h01, s_q + 8'h01}; state_d = S_RTI_PULL_PCL;end
+            S_RTI_PULL_PCL:   begin address_d = {8'h01, s_q + 8'h01}; state_d = S_RTI_PULL_PCH;end
+            S_RTI_PULL_PCH:   begin address_d = {8'h01, s_q + 8'h01}; state_d = S_FETCH;       end
+
+            // ---- BRK / IRQ / NMI entry ----
+            // BRK enters at S_INT_T1 (T0 was the opcode fetch itself).
+            // IRQ/NMI enter at S_INT_T0 (the "discarded fetch" cycle).
+            S_INT_T0: begin
+                address_d = pc_q;
+                state_d   = S_INT_T1;
+            end
+            S_INT_T1: begin
+                address_d = pc_q;
+                state_d   = S_INT_PUSH_PCH;
+            end
+            S_INT_PUSH_PCH: begin
+                address_d  = {8'h01, s_q};
+                // For an IRQ/NMI in normal operation the suppress-write
+                // behavior of the reset sequence does NOT apply. Always write.
+                rw_d       = 1'b0;
+                data_out_d = pc_q[15:8];
+                state_d    = S_INT_PUSH_PCL;
+            end
+            S_INT_PUSH_PCL: begin
+                address_d  = {8'h01, s_q};
+                rw_d       = 1'b0;
+                data_out_d = pc_q[7:0];
+                state_d    = S_INT_PUSH_P;
+            end
+            S_INT_PUSH_P: begin
+                address_d  = {8'h01, s_q};
+                rw_d       = 1'b0;
+                // BRK: push P with B=1, unused=1. IRQ/NMI: B=0, unused=1.
+                data_out_d = (int_mode_q == INT_BRK) ? (p_q | 8'h30)
+                                                     : ((p_q & 8'hEF) | 8'h20);
+                state_d    = S_INT_VEC_LO;
+            end
+            S_INT_VEC_LO: begin
+                address_d = (int_mode_q == INT_NMI) ? 16'hFFFA : 16'hFFFE;
+                state_d   = S_INT_VEC_HI;
+            end
+            S_INT_VEC_HI: begin
+                address_d = (int_mode_q == INT_NMI) ? 16'hFFFB : 16'hFFFF;
+                state_d   = S_FETCH;
             end
 
             S_HALT: begin
@@ -540,21 +692,30 @@ module mos6502_core
     // ------------------------------------------------------------------------
     always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
-            state_q      <= S_RESET_0;
-            a_q          <= 8'h00;
-            x_q          <= 8'h00;
-            y_q          <= 8'h00;
-            s_q          <= 8'h00;
-            p_q          <= 8'h24;
-            ir_q         <= 8'h00;
-            pc_q         <= 16'h0000;
-            ad_lo_q      <= 8'h00;
-            ad_hi_q      <= 8'h00;
-            ptr_q        <= 8'h00;
-            idx_carry_q  <= 1'b0;
-            alu_in_q     <= 8'h00;
-            rmw_target_q <= 16'h0000;
+            state_q        <= S_RESET_0;
+            a_q            <= 8'h00;
+            x_q            <= 8'h00;
+            y_q            <= 8'h00;
+            s_q            <= 8'h00;
+            p_q            <= 8'h24;
+            ir_q           <= 8'h00;
+            pc_q           <= 16'h0000;
+            ad_lo_q        <= 8'h00;
+            ad_hi_q        <= 8'h00;
+            ptr_q          <= 8'h00;
+            idx_carry_q    <= 1'b0;
+            alu_in_q       <= 8'h00;
+            rmw_target_q   <= 16'h0000;
+            int_mode_q     <= INT_RESET;
+            nmi_n_prev_q   <= 1'b1;
+            nmi_pending_q  <= 1'b0;
         end else if (ready) begin
+            // NMI edge detection on raw nmi_n. Latched on the falling edge.
+            nmi_n_prev_q <= nmi_n;
+            if (nmi_n_prev_q && !nmi_n) begin
+                nmi_pending_q <= 1'b1;
+            end
+
             state_q <= state_d;
 
             unique case (state_q)
@@ -566,11 +727,90 @@ module mos6502_core
 
             unique case (state_q)
                 S_FETCH: begin
-                    ir_q <= data_in;
-                    pc_q <= pc_q + 16'd1;
+                    // If an interrupt is pending, the fetched byte is
+                    // discarded — don't latch IR, don't advance PC. Otherwise
+                    // it's a normal fetch.
+                    if (nmi_pending_q) begin
+                        int_mode_q <= INT_NMI;
+                    end else if (!irq_n && !p_q[2]) begin
+                        int_mode_q <= INT_IRQ;
+                    end else begin
+                        ir_q <= data_in;
+                        pc_q <= pc_q + 16'd1;
+                        if (data_in == 8'h00) int_mode_q <= INT_BRK;
+                    end
                 end
                 S_IMM_RW: begin
                     pc_q <= pc_q + 16'd1;
+                end
+                // Stack push: decrement S at the cycle the write goes out.
+                S_PUSH_T2: begin
+                    s_q <= s_q - 8'h01;
+                end
+                // Stack pull: increment S at the cycle the pulled data is
+                // latched (S_PULL_T3). The actual load into A or P is in
+                // the dedicated commit blocks below.
+                S_PULL_T3: begin
+                    s_q <= s_q + 8'h01;
+                end
+                // JSR
+                S_JSR_LO: begin
+                    ad_lo_q <= data_in;
+                    pc_q    <= pc_q + 16'd1;
+                end
+                S_JSR_PUSH_PCH, S_JSR_PUSH_PCL: begin
+                    s_q <= s_q - 8'h01;
+                end
+                S_JSR_HI: begin
+                    // PC <= {high_byte_fetched, ad_lo_q}. The fetch sets PC
+                    // for the very next S_FETCH; don't increment PC further.
+                    pc_q <= {data_in, ad_lo_q};
+                end
+                // RTS
+                S_RTS_PULL_PCL: begin
+                    pc_q[7:0] <= data_in;
+                    s_q       <= s_q + 8'h01;
+                end
+                S_RTS_PULL_PCH: begin
+                    pc_q[15:8] <= data_in;
+                    s_q        <= s_q + 8'h01;
+                end
+                S_RTS_INC: begin
+                    pc_q <= pc_q + 16'd1;
+                end
+                // RTI
+                S_RTI_PULL_P: begin
+                    // Pull P. NMOS quirk: bit 4 of pulled byte is discarded
+                    // (always reads as 0 in storage), bit 5 always 1.
+                    p_q <= (data_in & 8'hEF) | 8'h20;
+                    s_q <= s_q + 8'h01;
+                end
+                S_RTI_PULL_PCL: begin
+                    pc_q[7:0] <= data_in;
+                    s_q       <= s_q + 8'h01;
+                end
+                S_RTI_PULL_PCH: begin
+                    pc_q[15:8] <= data_in;
+                    s_q        <= s_q + 8'h01;
+                end
+                // INT entry
+                S_INT_T1: begin
+                    // For BRK only, advance past the signature byte.
+                    if (int_mode_q == INT_BRK) pc_q <= pc_q + 16'd1;
+                end
+                S_INT_PUSH_PCH, S_INT_PUSH_PCL: begin
+                    s_q <= s_q - 8'h01;
+                end
+                S_INT_PUSH_P: begin
+                    s_q    <= s_q - 8'h01;
+                    p_q[2] <= 1'b1;       // set I flag during interrupt entry
+                end
+                S_INT_VEC_LO: begin
+                    pc_q[7:0] <= data_in;
+                end
+                S_INT_VEC_HI: begin
+                    pc_q[15:8] <= data_in;
+                    if (int_mode_q == INT_NMI) nmi_pending_q <= 1'b0;
                 end
                 S_ZP_ADDR, S_ZPI_ADDR: begin
                     ad_lo_q <= data_in;
@@ -642,6 +882,19 @@ module mos6502_core
             // ALU commit to A.
             if (alu_commit_a || alu_commit_acc) begin
                 a_q <= alu_result;
+            end
+
+            // PLA / PLP commit (at S_PULL_T3, the cycle when DB has the
+            // pulled byte). PLA = $68, PLP = $28.
+            if (state_q == S_PULL_T3) begin
+                if (ir_q == 8'h68) begin
+                    a_q    <= data_in;
+                    p_q[1] <= (data_in == 8'h00);
+                    p_q[7] <= data_in[7];
+                end else if (ir_q == 8'h28) begin
+                    // PLP: discard bit 4 (B), force bit 5 (unused) to 1.
+                    p_q <= (data_in & 8'hEF) | 8'h20;
+                end
             end
 
             // ALU commit to X/Y for INX/INY/DEX/DEY.
