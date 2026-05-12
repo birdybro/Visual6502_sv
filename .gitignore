@@ -1,0 +1,20 @@
+# Verilator build outputs
+sim/verilator/obj_dir/
+**/obj_dir/
+*.vcd
+*.fst
+
+# Editor / OS detritus
+*.swp
+*.swo
+.DS_Store
+
+# Trace artifacts kept out of git unless explicitly committed
+tests/traces/*.log
+tests/traces/*.tsv
+!tests/traces/.gitkeep
+
+# Build outputs
+build/
+*.o
+*.a
