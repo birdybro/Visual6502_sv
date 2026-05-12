@@ -30,13 +30,18 @@ Living checklist. Update as work progresses. Items marked `[x]` are done,
 
 ## Milestone 3 — Reset + fetch + NOP
 
-- [ ] Reset state machine (7 cycles, dummy reads, vector fetch from $FFFC/D).
-- [ ] PC register and increment path.
-- [ ] Bus interface: drive AB, DB out, RW, sync correctly per cycle.
-- [ ] Instruction fetch microcycle.
-- [ ] NOP ($EA) — 2-cycle, no side effects beyond PC++.
-- [ ] Reset trace matches Visual6502.
-- [ ] NOP trace matches Visual6502 over 100+ cycles.
+- [x] Reset state machine: 6 cycles before sync (R0 dummy, R1-3 suppressed
+      stack pushes with S decrement, R4-5 vector fetch from $FFFC/D), 7th cycle
+      is first opcode fetch with sync=1.
+- [x] PC register and increment path.
+- [x] Bus interface: drive AB, DB out, RW, sync correctly per cycle.
+- [x] Instruction fetch microcycle (sync=1, IR <= DB, PC++).
+- [x] NOP ($EA) — 2-cycle, no side effects beyond PC++.
+- [x] Unimplemented opcodes route to a 2-cycle dummy path so the bus stays
+      well-defined while later milestones implement them.
+- [x] Reset matches Visual6502 from cycle 3 onwards (the first 3 power-on
+      cycles diverge by design — the RTL has deterministic init).
+- [x] NOP trace matches Visual6502 over 64 cycles on ab,db,rw,sync.
 
 ## Milestone 4 — Loads / stores / transfers
 

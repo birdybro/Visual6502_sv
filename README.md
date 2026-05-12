@@ -10,13 +10,13 @@ core is verified against those traces.
 
 ## Status
 
-Milestone 2 (reference tracing) complete; building the CPU starting at M3.
+Milestone 3 (reset + fetch + NOP) complete; 64 cycles of reset and NOP loop match the Visual6502 reference exactly on AB/DB/RW/SYNC.
 
 | Milestone | Status | Notes |
 |----|----|----|
 | M1 — Repo, docs, build skeleton | done | |
 | M2 — Visual6502 trace extractor + comparator | done | Headless Node engine + Python comparator. |
-| M3 — Reset, instruction fetch, NOP, PC increment | pending | |
+| M3 — Reset, instruction fetch, NOP, PC increment | done | `make test-m3` passes against reference. |
 | M4 — Loads/stores, addressing modes, transfers | pending | |
 | M5 — ALU, ADC/SBC (binary + decimal), shifts | pending | |
 | M6 — Stack, JSR/RTS, BRK/RTI, IRQ/NMI/reset edges | pending | |

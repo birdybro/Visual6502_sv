@@ -51,6 +51,18 @@ def main():
         help="Skip the first N cycles of both traces before comparing",
     )
     ap.add_argument(
+        "--ref-skip",
+        type=int,
+        default=0,
+        help="Additional skip applied only to the reference trace",
+    )
+    ap.add_argument(
+        "--rtl-skip",
+        type=int,
+        default=0,
+        help="Additional skip applied only to the RTL trace",
+    )
+    ap.add_argument(
         "--quiet",
         action="store_true",
         help="Only print mismatches / failures, not the OK summary",
@@ -71,8 +83,8 @@ def main():
             % (missing, ref_hdr, rtl_hdr)
         )
 
-    ref = ref[args.skip:]
-    rtl = rtl[args.skip:]
+    ref = ref[args.skip + args.ref_skip:]
+    rtl = rtl[args.skip + args.rtl_skip:]
     n = min(len(ref), len(rtl))
     if args.max_cycles is not None:
         n = min(n, args.max_cycles)
