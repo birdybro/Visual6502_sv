@@ -10,12 +10,12 @@ core is verified against those traces.
 
 ## Status
 
-Milestone 1 (foundation): in progress.
+Milestone 2 (reference tracing) complete; building the CPU starting at M3.
 
 | Milestone | Status | Notes |
 |----|----|----|
-| M1 — Repo, docs, build skeleton | in progress | This commit lays the foundation. |
-| M2 — Visual6502 trace extractor + comparator | pending | Headless port of `chipsim.js`. |
+| M1 — Repo, docs, build skeleton | done | |
+| M2 — Visual6502 trace extractor + comparator | done | Headless Node engine + Python comparator. |
 | M3 — Reset, instruction fetch, NOP, PC increment | pending | |
 | M4 — Loads/stores, addressing modes, transfers | pending | |
 | M5 — ALU, ADC/SBC (binary + decimal), shifts | pending | |

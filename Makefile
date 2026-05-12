@@ -31,9 +31,16 @@ VFLAGS_BUILD := --cc --exe --build -O2 \
 
 SIM_BIN     := $(BUILD_DIR)/V$(TOP)
 
+NODE        ?= node
+PYTHON      ?= python3
+
+REF_RUN     := $(ROOT_DIR)/tools/extract_visual6502/run.js
+TRACE_CMP   := $(ROOT_DIR)/tools/trace_compare/compare.py
+TRACE_DIR   := $(ROOT_DIR)/tests/traces
+
 # ---- Targets ----------------------------------------------------------------
 
-.PHONY: all lint sim test clean
+.PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check
 
 all: sim
 
@@ -48,10 +55,34 @@ $(SIM_BIN): $(RTL_SRCS) $(TB_CPP)
 	@echo ">>> verilator build"
 	$(VERILATOR) $(VFLAGS_BUILD) $(RTL_SRCS) $(TB_CPP)
 
-test: sim
+test: sim trace-self-check
 	@echo ">>> running skeleton smoke test"
 	$(SIM_BIN) +cycles=16 +quiet
 	@echo "test OK"
+
+# ---- M2: Visual6502 reference trace targets --------------------------------
+
+# Re-generate the canonical reset+BRK trace from empty memory. The first 8
+# cycles cover the reset vector fetch sequence; subsequent cycles run BRK in
+# a loop (memory full of $00 = BRK opcode).
+trace-ref-reset:
+	@echo ">>> generating reference reset trace"
+	$(NODE) $(REF_RUN) --no-program --include-reset --cycles 24 \
+	        --output $(TRACE_DIR)/reset_brk.tsv
+
+# Re-generate the NOP-loop reference trace. tests/asm/nop_loop.bin is 256
+# bytes of $EA loaded at $0000, reset vector $0000.
+trace-ref-nop:
+	@echo ">>> generating reference NOP-loop trace"
+	$(NODE) $(REF_RUN) $(ROOT_DIR)/tests/asm/nop_loop.bin --include-reset \
+	        --cycles 32 --output $(TRACE_DIR)/nop_loop.tsv
+
+# Tooling sanity check: comparing a reference trace against itself must pass.
+trace-self-check:
+	@echo ">>> trace comparator self-test"
+	$(PYTHON) $(TRACE_CMP) $(TRACE_DIR)/reset_brk.tsv $(TRACE_DIR)/reset_brk.tsv \
+	        --quiet
+	@echo "trace tooling OK"
 
 clean:
 	@echo ">>> cleaning"

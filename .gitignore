@@ -9,10 +9,10 @@ sim/verilator/obj_dir/
 *.swo
 .DS_Store
 
-# Trace artifacts kept out of git unless explicitly committed
+# Trace artifacts: keep reference TSVs under tests/traces/ in git
+# (they are golden baselines), but ignore transient log files.
 tests/traces/*.log
-tests/traces/*.tsv
-!tests/traces/.gitkeep
+tests/traces/rtl_*.tsv
 
 # Build outputs
 build/

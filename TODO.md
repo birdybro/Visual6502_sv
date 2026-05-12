@@ -15,17 +15,18 @@ Living checklist. Update as work progresses. Items marked `[x]` are done,
 
 ## Milestone 2 — Reference trace extraction + comparator
 
-- [ ] Headless port of Visual6502 under Node: load `segdefs.js`, `transdefs.js`,
-      `nodenames.js`, and a DOM-free version of `wires.js` + `chipsim.js`.
-- [ ] Stub out DOM-dependent globals (document, canvases, statbox).
-- [ ] Implement `tools/extract_visual6502/run.js` that takes a program binary
-      (with load address + reset vector) and emits a canonical trace.
-- [ ] Define the canonical trace format. Initial schema (TSV):
-      `half_cycle  cycle  phi0  AB  DB  RW  SYNC  A  X  Y  S  P  PC  IR  TState`.
-- [ ] Verilator harness emits the same format from `+trace=path.tsv`.
-- [ ] `tools/trace_compare/` aligns by bus cycle, reports first mismatch with
-      ±N cycles of context, supports `--ignore` regex for non-equivalent fields.
-- [ ] Record a baseline reset trace under `tests/traces/reset.tsv`.
+- [x] Headless port of Visual6502 under Node (`sim/visual6502_ref/visual6502_headless.js`).
+- [x] No DOM dependencies; data files loaded via `vm.runInContext`.
+- [x] `tools/extract_visual6502/run.js` accepts `--load-addr`, `--reset-vec`,
+      `--cycles`, `--output`, `--include-reset`, `--skip-halfsteps`.
+- [x] Canonical trace TSV header: `cycle phi0 ab db rw sync a x y s p pc ir`.
+- [x] `tools/trace_compare/compare.py` aligns by row, reports first mismatch
+      with ±N context, supports `--skip`, `--max-cycles`, `--fields`.
+- [x] Baseline reset trace `tests/traces/reset_brk.tsv` (cycles 0-23 from reset).
+- [x] Baseline NOP-loop trace `tests/traces/nop_loop.tsv`.
+- [x] Makefile targets `trace-ref-reset`, `trace-ref-nop`, `trace-self-check`.
+- [ ] Verilator harness will emit the same trace format from a `+trace=path` plusarg
+      (deferred to M3 where the RTL produces meaningful bus activity).
 
 ## Milestone 3 — Reset + fetch + NOP
 
