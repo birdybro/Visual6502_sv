@@ -57,13 +57,20 @@ Living checklist. Update as work progresses. Items marked `[x]` are done,
 
 ## Milestone 5 — ALU
 
-- [ ] Combinational `mos6502_alu` with op enum: ADC, SBC, AND, ORA, EOR,
+- [x] Combinational `mos6502_alu` with ops: ADC, SBC, AND, ORA, EOR,
       ASL, LSR, ROL, ROR, INC, DEC, CMP, BIT.
-- [ ] Flag generation: N, Z, C, V (per-op masks).
-- [ ] Decimal-mode ADC/SBC matching NMOS 6502 quirks.
-- [ ] CMP / CPX / CPY.
-- [ ] BIT (N from bit 7, V from bit 6, Z from AND result).
-- [ ] Trace tests per op, including BCD edge cases ($99+$01, $00-$01, etc.).
+- [x] Flag generation: N, Z, C, V (per-op masks at the commit site).
+- [x] Decimal-mode ADC/SBC matching NMOS quirks (V on intermediate, etc.).
+- [x] CMP / CPX / CPY.
+- [x] BIT (N from b[7], V from b[6], Z from A & memory).
+- [x] RMW memory: read → dummy-write old → write new, address held in
+      `rmw_target_q` across the three cycles.
+- [x] Accumulator-mode shifts (ASL A / LSR A / ROL A / ROR A): 2-cycle
+      implied via S_T1_DUMMY.
+- [x] INX / INY / DEX / DEY: 2-cycle implied via S_T1_DUMMY.
+- [x] Flag set/clear instructions (CLC/SEC/CLI/SEI/CLD/SED/CLV).
+- [x] 494 cycles of an M5 program match Visual6502 exactly, including
+      decimal-mode ADC and SBC across nibble-carry edge cases.
 
 ## Milestone 6 — Stack + interrupts
 

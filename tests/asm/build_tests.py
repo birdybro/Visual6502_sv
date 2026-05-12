@@ -90,9 +90,103 @@ def m4_loadstore():
     return prog
 
 
+def m5_alu():
+    # Exercises ALU ops, RMW, decimal mode, and flag instructions.
+    prog = [
+        # ----- Flag setup -----
+        0x18,                   # CLC
+        0xD8,                   # CLD (binary mode)
+        # ----- AND / ORA / EOR immediate -----
+        0xA9, 0xF0,             # LDA #$F0
+        0x29, 0x0F,             # AND #$0F   -> A = $00, Z=1
+        0xA9, 0xF0,             # LDA #$F0
+        0x09, 0x0F,             # ORA #$0F   -> A = $FF, N=1
+        0xA9, 0xAA,             # LDA #$AA
+        0x49, 0x55,             # EOR #$55   -> A = $FF, N=1
+        # ----- ADC binary -----
+        0xA9, 0x42,             # LDA #$42
+        0x69, 0x01,             # ADC #$01   -> A = $43, C=0
+        0xA9, 0xFF,             # LDA #$FF
+        0x69, 0x01,             # ADC #$01   -> A = $00, C=1, Z=1
+        0xA9, 0x7F,             # LDA #$7F
+        0x69, 0x01,             # ADC #$01   -> A = $80, V=1, N=1
+        # ----- SBC binary -----
+        0x38,                   # SEC
+        0xA9, 0x10,             # LDA #$10
+        0xE9, 0x01,             # SBC #$01   -> A = $0F
+        0xA9, 0x00,             # LDA #$00
+        0xE9, 0x01,             # SBC #$01   -> A = $FE, C=0 (borrow)
+        # ----- CMP/CPX/CPY -----
+        0xA9, 0x50,             # LDA #$50
+        0xC9, 0x50,             # CMP #$50   -> Z=1, C=1
+        0xC9, 0x40,             # CMP #$40   -> C=1, Z=0
+        0xC9, 0x60,             # CMP #$60   -> C=0, N=1
+        0xA2, 0x10,             # LDX #$10
+        0xE0, 0x10,             # CPX #$10   -> Z=1
+        0xA0, 0x20,             # LDY #$20
+        0xC0, 0x20,             # CPY #$20
+        # ----- BIT -----
+        0xA9, 0xC0,             # LDA #$C0  (N=1 V=1 from BIT)
+        0x85, 0x80,             # STA $80
+        0xA9, 0xFF,             # LDA #$FF
+        0x24, 0x80,             # BIT $80   -> N=1, V=1, Z=0
+        0xA9, 0x00,             # LDA #$00
+        0x24, 0x80,             # BIT $80   -> N=1, V=1, Z=1
+        # ----- Shifts (accumulator) -----
+        0xA9, 0x81,             # LDA #$81
+        0x0A,                   # ASL A     -> A = $02, C=1
+        0x4A,                   # LSR A     -> A = $01, C=0
+        0x18,                   # CLC
+        0xA9, 0x80,             # LDA #$80
+        0x2A,                   # ROL A     -> A = $00, C=1
+        0x2A,                   # ROL A     -> A = $01, C=0
+        0xA9, 0x01,             # LDA #$01
+        0x6A,                   # ROR A     -> A = $00, C=1
+        0x6A,                   # ROR A     -> A = $80, C=0
+        # ----- Shifts (memory zp) -----
+        0xA9, 0x55,             # LDA #$55
+        0x85, 0x90,             # STA $90
+        0x06, 0x90,             # ASL $90   -> mem[$90] = $AA
+        0x46, 0x90,             # LSR $90   -> mem[$90] = $55
+        # ----- INC/DEC memory -----
+        0xA9, 0x00, 0x85, 0xA0, # LDA #$00; STA $A0
+        0xE6, 0xA0,             # INC $A0   -> mem = $01
+        0xE6, 0xA0,             # INC $A0   -> mem = $02
+        0xC6, 0xA0,             # DEC $A0   -> mem = $01
+        # ----- INX/INY/DEX/DEY -----
+        0xA2, 0x00,             # LDX #$00
+        0xE8,                   # INX       -> X = $01
+        0xE8,                   # INX       -> X = $02
+        0xCA,                   # DEX       -> X = $01
+        0xA0, 0x80,             # LDY #$80
+        0x88,                   # DEY       -> Y = $7F
+        0xC8,                   # INY       -> Y = $80
+        # ----- Decimal mode ADC/SBC -----
+        0xF8,                   # SED
+        0x18,                   # CLC
+        0xA9, 0x09,             # LDA #$09
+        0x69, 0x01,             # ADC #$01  -> A = $10 (BCD)
+        0xA9, 0x49,             # LDA #$49
+        0x69, 0x51,             # ADC #$51  -> A = $00, C=1
+        0x38,                   # SEC
+        0xA9, 0x10,             # LDA #$10
+        0xE9, 0x01,             # SBC #$01  -> A = $09 (BCD)
+        0xA9, 0x00,             # LDA #$00
+        0xE9, 0x01,             # SBC #$01  -> A = $99 (BCD), C=0
+        0xD8,                   # CLD (back to binary)
+        # ----- Flag set/clear sweep -----
+        0x38, 0x18,             # SEC, CLC
+        0x78, 0x58,             # SEI, CLI
+        0xB8,                   # CLV
+        # Fall through to NOPs.
+    ]
+    return prog
+
+
 TESTS = {
     "nop_loop": (m3_nop, 0x0000),
     "m4_loadstore": (m4_loadstore, 0x0000),
+    "m5_alu": (m5_alu, 0x0000),
 }
 
 

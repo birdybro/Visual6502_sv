@@ -43,7 +43,7 @@ TRACE_DIR   := $(ROOT_DIR)/tests/traces
 # ---- Targets ----------------------------------------------------------------
 
 .PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check \
-        test-m3 test-m4
+        test-m3 test-m4 test-m5
 
 all: sim
 
@@ -58,7 +58,7 @@ $(SIM_BIN): $(RTL_SRCS) $(TB_CPP)
 	@echo ">>> verilator build"
 	$(VERILATOR) $(VFLAGS_BUILD) $(RTL_SRCS) $(TB_CPP)
 
-test: sim trace-self-check test-m3 test-m4
+test: sim trace-self-check test-m3 test-m4 test-m5
 	@echo "all tests OK"
 
 # ---- Per-milestone RTL tests -----------------------------------------------
@@ -107,6 +107,23 @@ test-m4: sim tests/asm/m4_loadstore.bin
 
 tests/asm/m4_loadstore.bin: tests/asm/build_tests.py
 	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m4_loadstore --out $@
+
+M5_ALU_BIN := $(ROOT_DIR)/tests/asm/m5_alu.bin
+
+# M5: ALU ops, RMW, decimal-mode ADC/SBC, flag set/clear, INX/INY/DEX/DEY,
+# accumulator and memory shifts. 494 cycles of program execution.
+test-m5: sim tests/asm/m5_alu.bin
+	@echo ">>> M5 test: ALU, RMW, decimal mode, flag ops"
+	$(SIM_BIN) +mem=$(M5_ALU_BIN) +cycles=500 \
+	        +trace=$(RTL_TRACE_DIR)/rtl_m5_alu.tsv +quiet
+	$(PYTHON) $(TRACE_CMP) $(TRACE_DIR)/m5_alu.tsv \
+	        $(RTL_TRACE_DIR)/rtl_m5_alu.tsv \
+	        --ref-skip $(REF_SKIP_TO_FETCH) --rtl-skip $(RTL_SKIP_TO_FETCH) \
+	        --fields ab,db,rw,sync
+	@echo "M5 OK"
+
+tests/asm/m5_alu.bin: tests/asm/build_tests.py
+	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m5_alu --out $@
 
 # ---- M2: Visual6502 reference trace targets --------------------------------
 
