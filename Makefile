@@ -43,7 +43,8 @@ TRACE_DIR   := $(ROOT_DIR)/tests/traces
 # ---- Targets ----------------------------------------------------------------
 
 .PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check \
-        test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8
+        test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8 \
+        synth synth-mister ci
 
 all: sim
 
@@ -174,6 +175,31 @@ test-m8: sim tests/asm/m8_undoc.bin
 
 tests/asm/m8_undoc.bin: tests/asm/build_tests.py
 	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m8_undoc --out $@
+
+# ---- M9: synthesis + CI -----------------------------------------------------
+
+# Synthesis pass through Yosys. Requires Yosys to be installed. Produces a
+# JSON netlist of the bare CPU (mos6502_core). Intentionally minimal — a
+# downstream FPGA flow (nextpnr / vendor place&route) would consume this.
+YOSYS ?= yosys
+synth:
+	@command -v $(YOSYS) >/dev/null 2>&1 || { \
+	    echo "yosys not found in PATH; install yosys to run this target"; \
+	    exit 1; }
+	$(YOSYS) -p "read_verilog -sv $(RTL_SRCS); synth -top $(TOP); \
+	            write_json $(ROOT_DIR)/build/mos6502_core.json"
+	@echo "synth OK → build/mos6502_core.json"
+
+# Synth check for the MiSTer wrapper.
+synth-mister:
+	@command -v $(YOSYS) >/dev/null 2>&1 || { \
+	    echo "yosys not found in PATH"; exit 1; }
+	$(YOSYS) -p "read_verilog -sv $(RTL_SRCS); synth -top mos6502_mister; \
+	            write_json $(ROOT_DIR)/build/mos6502_mister.json"
+
+# CI wrapper: lint + sim + full test suite. Exits non-zero on failure.
+ci:
+	$(ROOT_DIR)/scripts/run_ci.sh
 
 # M6 IRQ injection: re-runs the M6 program with irq_n asserted at cycle 100
 # (ref) / 97 (rtl). 224 cycles match (covers main program + IRQ entry +

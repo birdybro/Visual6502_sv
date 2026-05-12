@@ -100,6 +100,12 @@ module mos6502_core
     int_mode_e   int_mode_q;
     logic        nmi_n_prev_q;
     logic        nmi_pending_q;
+    logic        so_n_prev_q;
+
+    // RDY freeze: writes complete even when ready==0, but read cycles
+    // are paused. This matches the documented 6502 RDY semantics.
+    logic ready_advance;
+    assign ready_advance = ready || !rw;
 
     // ------------------------------------------------------------------------
     // Decode (current IR and look-ahead on incoming DB during S_FETCH).
@@ -801,11 +807,19 @@ module mos6502_core
             int_mode_q     <= INT_RESET;
             nmi_n_prev_q   <= 1'b1;
             nmi_pending_q  <= 1'b0;
-        end else if (ready) begin
+            so_n_prev_q    <= 1'b1;
+        end else if (ready_advance) begin
             // NMI edge detection on raw nmi_n. Latched on the falling edge.
             nmi_n_prev_q <= nmi_n;
             if (nmi_n_prev_q && !nmi_n) begin
                 nmi_pending_q <= 1'b1;
+            end
+
+            // SO falling-edge → set V flag. Sampled on the same clk so
+            // a one-cycle low pulse suffices.
+            so_n_prev_q <= so_n;
+            if (so_n_prev_q && !so_n) begin
+                p_q[6] <= 1'b1;
             end
 
             state_q <= state_d;
@@ -1101,8 +1115,7 @@ module mos6502_core
     // Tie-offs.
     // ------------------------------------------------------------------------
     // verilator lint_off UNUSEDSIGNAL
-    wire _unused = &{1'b0, irq_n, nmi_n, so_n, alu_zr, alu_ne, opk_next,
-                     p_q[7:4], p_q[2:1]};
+    wire _unused = &{1'b0, alu_zr, alu_ne, opk_next, p_q[7:4], p_q[2:1]};
     // verilator lint_on UNUSEDSIGNAL
 
 endmodule

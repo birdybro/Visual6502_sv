@@ -111,13 +111,15 @@ data_in[7:0]                                      input
 
 Notes:
 - `ready` (RDY) freezes the core on reads (per real 6502) — writes complete
-  before honoring RDY. Implemented by gating the state-machine advance.
-- `so_n` (SO, set-overflow input) sets the V flag asynchronously to instruction
-  flow but synchronously to `clk` in our implementation; documented quirk.
+  before honoring RDY. Implemented at M9 via `ready_advance = ready || !rw`
+  gating the synchronous block.
+- `so_n` (SO, set-overflow input) sets the V flag on a falling edge. Implemented
+  at M9 via a `so_n_prev_q` register; one clock-cycle low pulse suffices.
 - The real chip has separate `phi1out`/`phi2out` pins (Visual6502
-  `clk1out`/`clk2out`). They are omitted from the synchronous interface; if a
-  phase-accurate wrapper is needed later (e.g. for a MiSTer core that drives
-  a real bus), it will be added in `rtl/common/`.
+  `clk1out`/`clk2out`). They are omitted from the synchronous `mos6502_core`
+  interface. A MiSTer-friendly wrapper at `rtl/common/mos6502_mister.sv`
+  provides phi1_out/phi2_out (derived from a bus-cycle enable input `cen`)
+  for retro-platform integrations.
 
 ## What is intentionally NOT in the RTL
 

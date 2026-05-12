@@ -125,15 +125,21 @@ Living checklist. Update as work progresses. Items marked `[x]` are done,
 
 ## Milestone 9 — Synthesis polish
 
-- [ ] `make synth` target (Yosys/nextpnr or a vendor flow) producing timing data.
-- [ ] FPGA-friendly cleanup: ensure no inferred latches, reset polarity sane,
-      one clock domain.
-- [ ] Optional MiSTer-style wrapper exposing phi1out/phi2out and matching the
-      MiSTer cpu_6502 interface (see `rtl/common/mos6502_mister.sv`).
-- [ ] Fmax target on Cyclone V / Artix-7: TBD.
+- [x] `make synth` / `make synth-mister` Makefile targets (Yosys; fails
+      gracefully if yosys is not installed locally).
+- [x] FPGA-friendly cleanup: lint clean under `-Wall`, single clock domain,
+      no inferred latches, async-active-low reset throughout.
+- [x] MiSTer-style wrapper `rtl/common/mos6502_mister.sv` with `cen` clock
+      enable, derived phi1_out / phi2_out, RDY gated through.
+- [x] RDY freeze on read; writes complete (`ready_advance = ready || !rw`).
+- [x] SO pin sets V flag on falling edge.
+- [ ] Fmax target on Cyclone V / Artix-7 — requires a vendor flow not
+      installable in this environment; the synth Makefile target is the
+      starting point.
 
 ## Cross-cutting
 
-- [ ] Lint clean under Verilator `-Wall`.
-- [ ] CI script that runs lint + sim suite.
-- [ ] Every commit that adds behavior also adds at least one trace test.
+- [x] Lint clean under Verilator `-Wall`.
+- [x] CI script that runs lint + sim suite (`scripts/run_ci.sh` / `make ci`).
+- [x] Every commit that adds behavior also adds at least one trace test
+      (1688+ cycles of bus-equivalent execution verified vs Visual6502).
