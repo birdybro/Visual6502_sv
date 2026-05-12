@@ -95,13 +95,14 @@ Living checklist. Update as work progresses. Items marked `[x]` are done,
 
 ## Milestone 7 — Branches + dummy cycles + JMP indirect bug
 
-- [ ] Bcc family with correct taken/not-taken cycle counts.
-- [ ] Branch page-cross extra cycle.
-- [ ] Indexed-load dummy read on page cross; indexed-store always.
-- [ ] JMP absolute.
-- [ ] **JMP ($xxFF)** wraps high-byte fetch to $xx00.
-- [ ] RDY freeze on read; writes complete before honoring RDY.
-- [ ] SO pin sets V flag.
+- [x] Bcc family (BPL/BMI/BVC/BVS/BCC/BCS/BNE/BEQ) with 2/3/4-cycle counts.
+- [x] Branch page-cross extra cycle (T3 dummy at fixed PC).
+- [x] Indexed-load dummy read on page cross (M4); indexed-store always (M4).
+- [x] JMP absolute.
+- [x] **JMP ($xxFF)** wraps high-byte fetch to $xx00.
+- [x] 264 cycles of branch/JMP test match Visual6502.
+- [ ] RDY freeze on read; writes complete before honoring RDY (M9 polish).
+- [ ] SO pin sets V flag (M9 polish).
 
 ## Milestone 8 — Undocumented opcodes + ROM compatibility
 

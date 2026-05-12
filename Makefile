@@ -43,7 +43,7 @@ TRACE_DIR   := $(ROOT_DIR)/tests/traces
 # ---- Targets ----------------------------------------------------------------
 
 .PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check \
-        test-m3 test-m4 test-m5 test-m6 test-m6-irq
+        test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7
 
 all: sim
 
@@ -58,7 +58,7 @@ $(SIM_BIN): $(RTL_SRCS) $(TB_CPP)
 	@echo ">>> verilator build"
 	$(VERILATOR) $(VFLAGS_BUILD) $(RTL_SRCS) $(TB_CPP)
 
-test: sim trace-self-check test-m3 test-m4 test-m5 test-m6 test-m6-irq
+test: sim trace-self-check test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7
 	@echo "all tests OK"
 
 # ---- Per-milestone RTL tests -----------------------------------------------
@@ -140,6 +140,23 @@ test-m6: sim tests/asm/m6_stack.bin
 
 tests/asm/m6_stack.bin: tests/asm/build_tests.py
 	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m6_stack_subroutines --out $@
+
+M7_BRANCHES_BIN := $(ROOT_DIR)/tests/asm/m7_branches.bin
+
+# M7: branches (all 8), page crossing forwards + backwards, JMP abs, JMP
+# indirect $xxFF wrap bug. 264 cycles.
+test-m7: sim tests/asm/m7_branches.bin
+	@echo ">>> M7 test: branches, page crossings, JMP indirect bug"
+	$(SIM_BIN) +mem=$(M7_BRANCHES_BIN) +reset_vec=0x0080 +cycles=270 \
+	        +trace=$(RTL_TRACE_DIR)/rtl_m7_branches.tsv +quiet
+	$(PYTHON) $(TRACE_CMP) $(TRACE_DIR)/m7_branches.tsv \
+	        $(RTL_TRACE_DIR)/rtl_m7_branches.tsv \
+	        --ref-skip $(REF_SKIP_TO_FETCH) --rtl-skip $(RTL_SKIP_TO_FETCH) \
+	        --fields ab,db,rw,sync
+	@echo "M7 OK"
+
+tests/asm/m7_branches.bin: tests/asm/build_tests.py
+	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m7_branches --out $@
 
 # M6 IRQ injection: re-runs the M6 program with irq_n asserted at cycle 100
 # (ref) / 97 (rtl). 224 cycles match (covers main program + IRQ entry +

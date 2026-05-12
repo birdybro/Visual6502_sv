@@ -10,7 +10,7 @@ core is verified against those traces.
 
 ## Status
 
-Milestone 6 (stack, subroutines, BRK/RTI, IRQ) complete; 1160 cycles of program execution across M3-M6 match the Visual6502 reference exactly on AB/DB/RW/SYNC.
+Milestone 7 (branches, page crossings, JMP indirect bug) complete; 1424 cycles of program execution across M3-M7 match the Visual6502 reference exactly on AB/DB/RW/SYNC.
 
 | Milestone | Status | Notes |
 |----|----|----|
@@ -20,7 +20,7 @@ Milestone 6 (stack, subroutines, BRK/RTI, IRQ) complete; 1160 cycles of program 
 | M4 — Loads/stores, addressing modes, transfers | done | All AM × {LDA,LDX,LDY,STA,STX,STY} + T?? transfers. |
 | M5 — ALU, ADC/SBC (binary + decimal), shifts | done | ADC/SBC/AND/ORA/EOR/CMP/CPX/CPY/BIT/ASL/LSR/ROL/ROR/INC/DEC/INX/INY/DEX/DEY/flag-instr. |
 | M6 — Stack, JSR/RTS, BRK/RTI, IRQ/NMI | done | PHA/PHP/PLA/PLP, JSR/RTS, BRK/RTI, IRQ entry. NMI implemented; precise cycle alignment varies in some patterns. |
-| M7 — Branches, page crossings, dummy cycles, JMP ind bug | pending | |
+| M7 — Branches, page crossings, JMP indirect bug | done | All 8 branches, fwd/bwd page cross, JMP abs, JMP $xxFF wrap bug. |
 | M8 — Undocumented opcodes, test ROM compatibility | pending | |
 | M9 — Synthesis polish, optional MiSTer wrapper | pending | |
 

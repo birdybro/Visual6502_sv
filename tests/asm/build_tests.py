@@ -248,11 +248,97 @@ def m6_stack_subroutines():
     )
 
 
+def m7_branches():
+    """Branches (all 8), JMP abs, JMP indirect, JMP indirect $xxFF wrap bug,
+    forward and backward branches with page-cross."""
+    # Main block at $0080 so a branch can cross to $00FF / $0100 page edge.
+    main = [
+        # ----- BEQ / BNE -----
+        0xA9, 0x00,             # $0080: LDA #$00       (Z=1)
+        0xF0, 0x02,             # $0082: BEQ +2         (taken, no cross)
+        0xA9, 0xFF,             # $0084: LDA #$FF       (skipped)
+        0xA9, 0x01,             # $0086: LDA #$01       (Z=0)
+        0xF0, 0x02,             # $0088: BEQ +2         (not taken)
+        0xA9, 0x42,             # $008A: LDA #$42       (executes)
+        0xD0, 0x02,             # $008C: BNE +2         (taken)
+        0xA9, 0x99,             # $008E: LDA #$99       (skipped)
+        # ----- BPL / BMI -----
+        0xA9, 0x80,             # $0090: LDA #$80       (N=1)
+        0x30, 0x02,             # $0092: BMI +2         (taken)
+        0xA9, 0xCC,             # $0094: LDA #$CC       (skipped)
+        0x10, 0x02,             # $0096: BPL +2         (not taken, N=1)
+        0xA9, 0x11,             # $0098: LDA #$11       (executes; N=0 after)
+        0x10, 0x02,             # $009A: BPL +2         (taken)
+        0xA9, 0xCC,             # $009C: LDA #$CC       (skipped)
+        # ----- BCC / BCS -----
+        0x18,                   # $009E: CLC
+        0x90, 0x02,             # $009F: BCC +2         (taken)
+        0xA9, 0xCC,             # $00A1: LDA #$CC       (skipped)
+        0x38,                   # $00A3: SEC
+        0xB0, 0x02,             # $00A4: BCS +2         (taken)
+        0xA9, 0xCC,             # $00A6: LDA #$CC
+        # ----- BVC / BVS -----
+        0xA9, 0x40,             # $00A8: LDA #$40 (V=0 from B8 below)
+        0xB8,                   # $00AA: CLV
+        0x50, 0x02,             # $00AB: BVC +2         (taken)
+        0xA9, 0xCC,             # $00AD: LDA
+        # ----- Forward branch with page cross (PC = $00B1+2+0x60 = $0113) -----
+        0xA9, 0x00,             # $00AF: LDA #$00       (Z=1)
+        0xF0, 0x60,             # $00B1: BEQ +96  → $0113 (page cross)
+        0xEA,                   # $00B3.. (will be filled with NOPs anyway)
+        # We need a target at $0113.
+        # Continued at $0113.
+    ]
+    # Forward branch target: a backward branch with page cross.
+    after_fwd = [
+        # $0113 onward
+        0xA9, 0x80,             # $0113: LDA #$80 (N=1)
+        0x30, 0x80,             # $0115: BMI -128 → $0117 - 128 = $0097 (page cross back)
+        # If we don't end up back-branching cleanly we'll land here in NOPs.
+    ]
+    # At $0097 we should land back in the middle of the main block. To avoid
+    # ricocheting, set $0097 to a JMP abs that lands somewhere safe.
+    landing_97 = [
+        0x4C, 0x20, 0x02,       # $0097: JMP $0220  (avoid re-running the branch test)
+    ]
+    # JMP target at $0220: do an indirect JMP via $03FF (page-wrap bug).
+    landing_220 = [
+        0xA9, 0xAB,             # $0220: LDA #$AB
+        0x6C, 0xFF, 0x03,       # $0222: JMP ($03FF)  → uses ($03FF, $0300) due to bug
+        # Real CPU fetches PCL from $03FF and PCH from $0300 (wrap).
+        # We set $03FF=$50, $0300=$03 so target = $0350.
+    ]
+    landing_350 = [
+        0xA9, 0xCD,             # $0350: LDA #$CD (proof we landed via the bug)
+        # Loop forever with NOPs after this point.
+    ]
+    # Indirect pointer bytes.
+    indir = [(0x03FF, [0x50]), (0x0300, [0x03])]
+
+    blocks = [
+        (0x0080, main),
+        (0x0113, after_fwd),
+        (0x0097, landing_97),
+        (0x0220, landing_220),
+        (0x0350, landing_350),
+    ] + indir
+
+    return make_bin_blocks(
+        blocks=blocks,
+        vectors={
+            0xFFFC: 0x80, 0xFFFD: 0x00,   # reset → $0080
+            0xFFFE: 0x00, 0xFFFF: 0x10,   # IRQ/BRK (unused but defined)
+            0xFFFA: 0x00, 0xFFFB: 0x10,
+        },
+    )
+
+
 TESTS = {
     "nop_loop": (m3_nop, 0x0000),
     "m4_loadstore": (m4_loadstore, 0x0000),
     "m5_alu": (m5_alu, 0x0000),
-    "m6_stack_subroutines": (m6_stack_subroutines, None),  # None signals pre-built image
+    "m6_stack_subroutines": (m6_stack_subroutines, None),
+    "m7_branches": (m7_branches, None),
 }
 
 

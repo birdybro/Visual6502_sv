@@ -67,6 +67,13 @@ module mos6502_core
         S_INT_T0,     S_INT_T1,
         S_INT_PUSH_PCH, S_INT_PUSH_PCL, S_INT_PUSH_P,
         S_INT_VEC_LO, S_INT_VEC_HI,
+        // Conditional branches.
+        S_BR_OFFSET,       // T1: fetch offset, evaluate predicate
+        S_BR_TAKEN,        // T2 (taken): dummy at unfixed PC; check page cross
+        S_BR_FIXUP,        // T3 (taken+cross): dummy at fixed PC
+        // JMP absolute and JMP indirect.
+        S_JMP_ABS_LO, S_JMP_ABS_HI,
+        S_JMP_IND_LO, S_JMP_IND_HI, S_JMP_IND_PCL, S_JMP_IND_PCH,
         S_HALT
     } state_e;
 
@@ -81,6 +88,10 @@ module mos6502_core
     logic        idx_carry_q;
     logic [7:0]  alu_in_q;
     logic [15:0] rmw_target_q;
+    // Branch staging.
+    logic [7:0]  branch_offset_q;
+    logic        branch_cross_q;
+    logic        branch_neg_q;
     // Interrupt entry mode and pending latches. The testbench drives clean
     // synchronous inputs in our environment so we sample nmi_n / irq_n
     // directly (no synchronizer chain). If integrating with a real async
@@ -245,12 +256,17 @@ module mos6502_core
         // the "special" instructions whose cycle layout does not follow the
         // generic addr-mode template.
         unique case (o)
-            OP_JSR:  first_state_for = S_JSR_LO;
-            OP_RTS:  first_state_for = S_RTS_T1;
-            OP_RTI:  first_state_for = S_RTI_T1;
-            OP_BRK:  first_state_for = S_INT_T1;   // BRK shares T1 onwards
-            OP_PUSH: first_state_for = S_PUSH_T1;
-            OP_PULL: first_state_for = S_PULL_T1;
+            OP_JSR:    first_state_for = S_JSR_LO;
+            OP_RTS:    first_state_for = S_RTS_T1;
+            OP_RTI:    first_state_for = S_RTI_T1;
+            OP_BRK:    first_state_for = S_INT_T1;
+            OP_PUSH:   first_state_for = S_PUSH_T1;
+            OP_PULL:   first_state_for = S_PULL_T1;
+            OP_BRANCH: first_state_for = S_BR_OFFSET;
+            OP_JMP: begin
+                if (m == AM_IND) first_state_for = S_JMP_IND_LO;
+                else             first_state_for = S_JMP_ABS_LO;
+            end
             default: begin
                 unique case (m)
                     AM_IMPL: first_state_for = S_T1_DUMMY;
@@ -275,6 +291,20 @@ module mos6502_core
     always_comb begin
         rw_next = is_rmw_mem ? S_RMW_DUMMY_WRITE : S_FETCH;
     end
+
+    // Branch predicate. ir[7:6] selects flag (00=N,01=V,10=C,11=Z), ir[5]
+    // is the polarity (1 = branch when flag set, 0 = branch when clear).
+    function automatic logic branch_taken_now();
+        logic flag_val;
+        unique case (ir_q[7:6])
+            2'b00:   flag_val = p_q[7]; // N
+            2'b01:   flag_val = p_q[6]; // V
+            2'b10:   flag_val = p_q[0]; // C
+            2'b11:   flag_val = p_q[1]; // Z
+            default: flag_val = 1'b0;
+        endcase
+        branch_taken_now = (flag_val == ir_q[5]);
+    endfunction
 
     always_comb begin
         address_d  = pc_q;
@@ -513,6 +543,61 @@ module mos6502_core
                 state_d   = S_FETCH;
             end
 
+            // ---- Conditional branches ----
+            S_BR_OFFSET: begin
+                address_d = pc_q;
+                // Decide next state based on predicate (combinational on
+                // current p_q and ir_q[7:5]).
+                if (branch_taken_now()) begin
+                    state_d = S_BR_TAKEN;
+                end else begin
+                    state_d = S_FETCH;
+                end
+            end
+            S_BR_TAKEN: begin
+                // pc_q already advanced past the offset byte; we set PC's
+                // low byte to PC_lo + offset in the ff block on entry to this
+                // state. AB shows the unfixed-up PC. If no page cross we go
+                // straight to FETCH; otherwise to S_BR_FIXUP.
+                address_d = pc_q;
+                if (branch_cross_q) state_d = S_BR_FIXUP;
+                else                state_d = S_FETCH;
+            end
+            S_BR_FIXUP: begin
+                // AB shows the fixed PC (high byte adjusted). Dummy read,
+                // then fetch.
+                address_d = pc_q;
+                state_d   = S_FETCH;
+            end
+
+            // ---- JMP absolute / indirect ----
+            S_JMP_ABS_LO: begin
+                address_d = pc_q;
+                state_d   = S_JMP_ABS_HI;
+            end
+            S_JMP_ABS_HI: begin
+                address_d = pc_q;
+                state_d   = S_FETCH;
+            end
+            S_JMP_IND_LO: begin
+                address_d = pc_q;
+                state_d   = S_JMP_IND_HI;
+            end
+            S_JMP_IND_HI: begin
+                address_d = pc_q;
+                state_d   = S_JMP_IND_PCL;
+            end
+            S_JMP_IND_PCL: begin
+                address_d = {ad_hi_q, ad_lo_q};
+                state_d   = S_JMP_IND_PCH;
+            end
+            S_JMP_IND_PCH: begin
+                // 6502 indirect-jmp wrap bug: only the low byte of the
+                // pointer is incremented for the PCH fetch.
+                address_d = {ad_hi_q, ad_lo_q + 8'h01};
+                state_d   = S_FETCH;
+            end
+
             S_HALT: begin
                 address_d = pc_q;
                 state_d   = S_HALT;
@@ -706,6 +791,9 @@ module mos6502_core
             idx_carry_q    <= 1'b0;
             alu_in_q       <= 8'h00;
             rmw_target_q   <= 16'h0000;
+            branch_offset_q<= 8'h00;
+            branch_cross_q <= 1'b0;
+            branch_neg_q   <= 1'b0;
             int_mode_q     <= INT_RESET;
             nmi_n_prev_q   <= 1'b1;
             nmi_pending_q  <= 1'b0;
@@ -793,6 +881,59 @@ module mos6502_core
                     pc_q[15:8] <= data_in;
                     s_q        <= s_q + 8'h01;
                 end
+                // Branches: T1 fetches the offset and advances PC past it.
+                // Also latches whether the offset is negative and whether
+                // the upcoming PCL+offset add will cross a page.
+                S_BR_OFFSET: begin
+                    branch_offset_q <= data_in;
+                    branch_neg_q    <= data_in[7];
+                    // Detect page cross relative to the post-fetch PC
+                    // (which is pc_q+1 at this point).
+                    if (data_in[7]) begin
+                        // Negative offset: borrow if PCL_after < |offset|
+                        branch_cross_q <= ((pc_q[7:0] + 8'h01) < (~data_in + 8'h01));
+                    end else begin
+                        // Positive offset: carry if PCL_after + offset > 255
+                        branch_cross_q <= (({1'b0, pc_q[7:0] + 8'h01} +
+                                            {1'b0, data_in}) > 9'h0FF);
+                    end
+                    pc_q            <= pc_q + 16'd1;
+                end
+                // S_BR_TAKEN: PC was incremented to "PC after branch instr"
+                // in S_BR_OFFSET. We now apply the offset to PCL only and
+                // remember whether the high byte needs fixing.
+                S_BR_TAKEN: begin
+                    pc_q[7:0]      <= pc_q[7:0] + branch_offset_q;
+                end
+                // S_BR_FIXUP: apply the high-byte correction.
+                S_BR_FIXUP: begin
+                    if (branch_neg_q) pc_q[15:8] <= pc_q[15:8] - 8'h01;
+                    else              pc_q[15:8] <= pc_q[15:8] + 8'h01;
+                end
+
+                // JMP absolute / indirect: latch lo, hi, and update PC.
+                S_JMP_ABS_LO: begin
+                    ad_lo_q <= data_in;
+                    pc_q    <= pc_q + 16'd1;
+                end
+                S_JMP_ABS_HI: begin
+                    pc_q <= {data_in, ad_lo_q};
+                end
+                S_JMP_IND_LO: begin
+                    ad_lo_q <= data_in;
+                    pc_q    <= pc_q + 16'd1;
+                end
+                S_JMP_IND_HI: begin
+                    ad_hi_q <= data_in;
+                    pc_q    <= pc_q + 16'd1;
+                end
+                S_JMP_IND_PCL: begin
+                    pc_q[7:0] <= data_in;
+                end
+                S_JMP_IND_PCH: begin
+                    pc_q[15:8] <= data_in;
+                end
+
                 // INT entry
                 S_INT_T1: begin
                     // For BRK only, advance past the signature byte.
