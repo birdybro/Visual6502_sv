@@ -112,16 +112,16 @@ Living checklist. Update as work progresses. Items marked `[x]` are done,
 - [x] SAX (store A & X): $87/$97/$8F/$83.
 - [x] LAX (load both A and X): $A7/$B7/$AF/$BF/$A3/$B3.
 - [x] 264 cycles match Visual6502 (`make test-m8`).
-- [ ] DCP / ISC: combined RMW + CMP/SBC. Needs the RMW final-write state
-      to also affect A's flags. Future work.
-- [ ] SLO / RLA / SRE / RRA: combined RMW shift + ALU on A. Future work.
-- [ ] ANC / ALR / ARR / AXS: 2-cycle immediate ALU combinations.
-      Future work.
+- [x] DCP / ISC: combined RMW + CMP/SBC via second combo ALU instance.
+- [x] SLO / RLA / SRE / RRA: combined RMW shift + ALU on A.
+- [x] ANC / ALR / ARR / AXS: 2-cycle immediate combos via inline arith.
 - [ ] Unstable: XAA / AHX / SHX / SHY / TAS / LAS — behavior depends on
-      transistor analog state (not modeled in clean RTL). Will document as
-      "unimplemented; emit a $EA-equivalent placeholder behavior."
-- [ ] Klaus Dormann 6502 functional test ROM end-to-end run. Requires the
-      DCP/ISC/SLO/RLA family for full compatibility.
+      transistor analog state (magic constant patterns); not modeled in
+      clean RTL. They reach the FSM's "unknown opcode → 2-cycle dummy"
+      path and won't crash, but won't match Visual6502.
+- [ ] Klaus Dormann 6502 functional test ROM end-to-end run. The opcode
+      coverage should now be sufficient (the test ROM uses documented +
+      stable undocumented opcodes only).
 
 ## Milestone 9 — Synthesis polish
 

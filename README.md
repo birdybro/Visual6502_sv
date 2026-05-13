@@ -10,7 +10,7 @@ core is verified against those traces.
 
 ## Status
 
-Milestone 8 (stable undocumented opcodes) complete; 1688 cycles of program execution across M3-M8 match the Visual6502 reference exactly on AB/DB/RW/SYNC.
+Milestone 8 (full stable undocumented opcode set) complete; 2052 cycles of program execution across M3-M8 match the Visual6502 reference exactly on AB/DB/RW/SYNC.
 
 | Milestone | Status | Notes |
 |----|----|----|
@@ -21,7 +21,7 @@ Milestone 8 (stable undocumented opcodes) complete; 1688 cycles of program execu
 | M5 — ALU, ADC/SBC (binary + decimal), shifts | done | ADC/SBC/AND/ORA/EOR/CMP/CPX/CPY/BIT/ASL/LSR/ROL/ROR/INC/DEC/INX/INY/DEX/DEY/flag-instr. |
 | M6 — Stack, JSR/RTS, BRK/RTI, IRQ/NMI | done | PHA/PHP/PLA/PLP, JSR/RTS, BRK/RTI, IRQ entry. NMI implemented; precise cycle alignment varies in some patterns. |
 | M7 — Branches, page crossings, JMP indirect bug | done | All 8 branches, fwd/bwd page cross, JMP abs, JMP $xxFF wrap bug. |
-| M8 — Undocumented opcodes, broader ROM | partial | Undoc NOPs (1/2/3-byte), SAX, LAX implemented. DCP/ISC/SLO/RLA/SRE/RRA/ANC/ALR/ARR/AXS not implemented; XAA/AHX/SHX/SHY/TAS/LAS noted as unstable. |
+| M8 — Undocumented opcodes, broader ROM | done | NOPs (1/2/3-byte), SAX, LAX, plus the combined RMW+ALU family (DCP/ISC/SLO/RLA/SRE/RRA × 7 modes each) and the immediate combos (ANC/ALR/ARR/AXS). Unstable opcodes (XAA/AHX/SHX/SHY/TAS/LAS) documented as not modelable. |
 | M9 — Synthesis polish, MiSTer wrapper | done | Lint clean -Wall, RDY/SO pins live, `rtl/common/mos6502_mister.sv` wrapper, `make synth` documented, `scripts/run_ci.sh` end-to-end. |
 | M9 — Synthesis polish, optional MiSTer wrapper | pending | |
 

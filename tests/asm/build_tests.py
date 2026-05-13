@@ -375,6 +375,69 @@ def m8_undoc():
     return prog
 
 
+def m8a_rmw_combos():
+    """Exercises DCP / ISC / SLO / RLA / SRE / RRA across modes."""
+    prog = [
+        # ---- DCP zp ($C7) ----
+        # mem[$80] = $03; A = $03 → CMP after DEC → mem=$02, Z=0 C=1 N=0
+        0xA9, 0x03, 0x85, 0x80,         # LDA #$03; STA $80
+        0xA9, 0x03,                     # LDA #$03
+        0xC7, 0x80,                     # DCP $80   → mem=$02, CMP A($03) vs $02
+        # ---- ISC zp ($E7) ----
+        # mem[$81] = $04; A=$05; C=0; SBC → A = A - new_M - !C = 5 - 5 - 1 = -1
+        0xA9, 0x04, 0x85, 0x81,
+        0x18,                           # CLC
+        0xA9, 0x05,                     # LDA #$05
+        0xE7, 0x81,                     # ISC $81   → mem=$05, A = 5-5-1 = $FF
+        # ---- SLO zp ($07) ----
+        # mem[$82] = $40; A=$01; SLO → mem = $80 (shift), A = A | $80 = $81
+        0xA9, 0x40, 0x85, 0x82,
+        0xA9, 0x01,
+        0x07, 0x82,                     # SLO $82
+        # ---- RLA zp ($27) ----
+        # mem[$83] = $C0; C=0; A=$0F; RLA → mem ROL = $80 (C=1), A = A & $80 = 0
+        0xA9, 0xC0, 0x85, 0x83,
+        0x18,                           # CLC
+        0xA9, 0x0F,
+        0x27, 0x83,                     # RLA $83
+        # ---- SRE zp ($47) ----
+        # mem[$84] = $03; A=$05; SRE → mem LSR = $01 (C=1), A = A ^ $01 = $04
+        0xA9, 0x03, 0x85, 0x84,
+        0xA9, 0x05,
+        0x47, 0x84,                     # SRE $84
+        # ---- RRA zp ($67) ----
+        # mem[$85] = $03; C=0; A=$05; RRA → mem ROR = $01 (C=1), A = 5 + 1 + 1 = $07
+        0xA9, 0x03, 0x85, 0x85,
+        0x18,
+        0xA9, 0x05,
+        0x67, 0x85,                     # RRA $85
+        # ---- DCP abs,X ($DF) — exercise indexed mode ----
+        0xA9, 0x10, 0x8D, 0x00, 0x02,   # STA $0200 (mem = $10)
+        0xA2, 0x00,
+        0xA9, 0x10,
+        0xDF, 0x00, 0x02,               # DCP $0200,X  → mem=$0F, CMP A($10) vs $0F → C=1
+        # ---- Immediate undoc combos ----
+        # ANC #$F0  -> A = $10 & $F0 = $10. wait, A was $10 from previous LDA.
+        # Use a fresh LDA. ANC: A = A & imm, C = bit 7 of result.
+        0xA9, 0xFF, 0x0B, 0x80,         # LDA #$FF; ANC #$80  → A=$80, C=1, N=1
+        0xA9, 0xFF, 0x2B, 0x0F,         # LDA #$FF; ANC #$0F  → A=$0F, C=0, N=0
+        # ALR #$0F  -> A = ($FF & $0F) >> 1 = $07; C = $0F & 1 = 1
+        0xA9, 0xFF, 0x4B, 0x0F,         # LDA #$FF; ALR #$0F  → A=$07, C=1
+        # ARR #$0F  -> ROR((A & 0F)). A=$0F & $0F = $0F. {C_in, $0F >> 1}.
+        # If C_in was 1 (from ALR above): result = {1, $07} = $87. C = res[6] = 0.
+        0x6B, 0x0F,                     # ARR #$0F
+        # AXS: X = (A & X) - imm. A=$87, X=$10 (still from earlier).
+        # (A & X) = $87 & $10 = $00. $00 - $05 = $FB (borrow). C=0 (borrow).
+        0xCB, 0x05,                     # AXS #$05
+        # End: infinite loop so PC doesn't walk into the data zone we just
+        # wrote (would land on a KIL opcode like $02). 4C XX XX = JMP $XXXX.
+    ]
+    # Compute the JMP target (the JMP itself) and append.
+    jmp_addr = len(prog)
+    prog += [0x4C, jmp_addr & 0xFF, (jmp_addr >> 8) & 0xFF]
+    return prog
+
+
 TESTS = {
     "nop_loop": (m3_nop, 0x0000),
     "m4_loadstore": (m4_loadstore, 0x0000),
@@ -382,6 +445,7 @@ TESTS = {
     "m6_stack_subroutines": (m6_stack_subroutines, None),
     "m7_branches": (m7_branches, None),
     "m8_undoc": (m8_undoc, 0x0000),
+    "m8a_rmw_combos": (m8a_rmw_combos, 0x0000),
 }
 
 

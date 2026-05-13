@@ -43,7 +43,7 @@ TRACE_DIR   := $(ROOT_DIR)/tests/traces
 # ---- Targets ----------------------------------------------------------------
 
 .PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check \
-        test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8 \
+        test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8 test-m8a \
         synth synth-mister ci
 
 all: sim
@@ -59,7 +59,7 @@ $(SIM_BIN): $(RTL_SRCS) $(TB_CPP)
 	@echo ">>> verilator build"
 	$(VERILATOR) $(VFLAGS_BUILD) $(RTL_SRCS) $(TB_CPP)
 
-test: sim trace-self-check test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8
+test: sim trace-self-check test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8 test-m8a
 	@echo "all tests OK"
 
 # ---- Per-milestone RTL tests -----------------------------------------------
@@ -175,6 +175,23 @@ test-m8: sim tests/asm/m8_undoc.bin
 
 tests/asm/m8_undoc.bin: tests/asm/build_tests.py
 	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m8_undoc --out $@
+
+M8A_RMW_BIN := $(ROOT_DIR)/tests/asm/m8a_rmw_combos.bin
+
+# M8a: combined RMW+ALU undocumented opcodes (DCP, ISC, SLO, RLA, SRE, RRA)
+# + immediate ALU combos (ANC, ALR, ARR, AXS). 364 cycles.
+test-m8a: sim tests/asm/m8a_rmw_combos.bin
+	@echo ">>> M8a test: DCP/ISC/SLO/RLA/SRE/RRA + ANC/ALR/ARR/AXS"
+	$(SIM_BIN) +mem=$(M8A_RMW_BIN) +cycles=370 \
+	        +trace=$(RTL_TRACE_DIR)/rtl_m8a_rmw_combos.tsv +quiet
+	$(PYTHON) $(TRACE_CMP) $(TRACE_DIR)/m8a_rmw_combos.tsv \
+	        $(RTL_TRACE_DIR)/rtl_m8a_rmw_combos.tsv \
+	        --ref-skip $(REF_SKIP_TO_FETCH) --rtl-skip $(RTL_SKIP_TO_FETCH) \
+	        --fields ab,db,rw,sync
+	@echo "M8a OK"
+
+tests/asm/m8a_rmw_combos.bin: tests/asm/build_tests.py
+	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m8a_rmw_combos --out $@
 
 # ---- M9: synthesis + CI -----------------------------------------------------
 

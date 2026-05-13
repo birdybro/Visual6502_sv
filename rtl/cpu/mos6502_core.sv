@@ -188,12 +188,18 @@ module mos6502_core
             8'hE0, 8'hE4, 8'hEC, 8'hC0, 8'hC4, 8'hCC:               ir_to_alu_op = ALU_CMP;
             8'hE9, 8'hE5, 8'hF5, 8'hED, 8'hFD, 8'hF9, 8'hE1, 8'hF1: ir_to_alu_op = ALU_SBC;
             8'h24, 8'h2C:                                            ir_to_alu_op = ALU_BIT;
-            8'h0A, 8'h06, 8'h16, 8'h0E, 8'h1E:                       ir_to_alu_op = ALU_ASL;
-            8'h2A, 8'h26, 8'h36, 8'h2E, 8'h3E:                       ir_to_alu_op = ALU_ROL;
-            8'h4A, 8'h46, 8'h56, 8'h4E, 8'h5E:                       ir_to_alu_op = ALU_LSR;
-            8'h6A, 8'h66, 8'h76, 8'h6E, 8'h7E:                       ir_to_alu_op = ALU_ROR;
-            8'hE6, 8'hF6, 8'hEE, 8'hFE, 8'hE8, 8'hC8:                ir_to_alu_op = ALU_INC;
-            8'hC6, 8'hD6, 8'hCE, 8'hDE, 8'hCA, 8'h88:                ir_to_alu_op = ALU_DEC;
+            8'h0A, 8'h06, 8'h16, 8'h0E, 8'h1E,
+            8'h03, 8'h07, 8'h0F, 8'h13, 8'h17, 8'h1B, 8'h1F:         ir_to_alu_op = ALU_ASL; // ASL + SLO
+            8'h2A, 8'h26, 8'h36, 8'h2E, 8'h3E,
+            8'h23, 8'h27, 8'h2F, 8'h33, 8'h37, 8'h3B, 8'h3F:         ir_to_alu_op = ALU_ROL; // ROL + RLA
+            8'h4A, 8'h46, 8'h56, 8'h4E, 8'h5E,
+            8'h43, 8'h47, 8'h4F, 8'h53, 8'h57, 8'h5B, 8'h5F:         ir_to_alu_op = ALU_LSR; // LSR + SRE
+            8'h6A, 8'h66, 8'h76, 8'h6E, 8'h7E,
+            8'h63, 8'h67, 8'h6F, 8'h73, 8'h77, 8'h7B, 8'h7F:         ir_to_alu_op = ALU_ROR; // ROR + RRA
+            8'hE6, 8'hF6, 8'hEE, 8'hFE, 8'hE8, 8'hC8,
+            8'hE3, 8'hE7, 8'hEF, 8'hF3, 8'hF7, 8'hFB, 8'hFF:         ir_to_alu_op = ALU_INC; // INC + ISC
+            8'hC6, 8'hD6, 8'hCE, 8'hDE, 8'hCA, 8'h88,
+            8'hC3, 8'hC7, 8'hCF, 8'hD3, 8'hD7, 8'hDB, 8'hDF:         ir_to_alu_op = ALU_DEC; // DEC + DCP
             default:                                                  ir_to_alu_op = ALU_NONE;
         endcase
     endfunction
@@ -241,6 +247,82 @@ module mos6502_core
         .zero      (alu_zr),
         .negative  (alu_ne)
     );
+
+    // Second ALU for combined RMW+ALU undocumented opcodes (DCP/ISC/SLO/
+    // RLA/SRE/RRA). Computes A op (modified-memory) at the same cycle as
+    // the RMW final write. Carry input differs by op:
+    //   - RRA's ADC consumes the *new* C from the ROR (= alu_co)
+    //   - All others use the current C flag (p_q[0]); INC/DEC don't touch C.
+    function automatic alu_op_e ir_to_combo_op(input logic [7:0] ir);
+        unique case (ir)
+            8'hC3, 8'hC7, 8'hCF, 8'hD3, 8'hD7, 8'hDB, 8'hDF: ir_to_combo_op = ALU_CMP; // DCP
+            8'hE3, 8'hE7, 8'hEF, 8'hF3, 8'hF7, 8'hFB, 8'hFF: ir_to_combo_op = ALU_SBC; // ISC
+            8'h03, 8'h07, 8'h0F, 8'h13, 8'h17, 8'h1B, 8'h1F: ir_to_combo_op = ALU_ORA; // SLO
+            8'h23, 8'h27, 8'h2F, 8'h33, 8'h37, 8'h3B, 8'h3F: ir_to_combo_op = ALU_AND; // RLA
+            8'h43, 8'h47, 8'h4F, 8'h53, 8'h57, 8'h5B, 8'h5F: ir_to_combo_op = ALU_EOR; // SRE
+            8'h63, 8'h67, 8'h6F, 8'h73, 8'h77, 8'h7B, 8'h7F: ir_to_combo_op = ALU_ADC; // RRA
+            default:                                          ir_to_combo_op = ALU_NONE;
+        endcase
+    endfunction
+
+    alu_op_e combo_op;
+    logic    combo_uses_alu_co;     // 1 for RRA only
+    logic    combo_writes_a;        // 1 for everything except DCP
+    logic [7:0] combo_result;
+    logic       combo_co, combo_ov, combo_zr, combo_ne;
+    assign combo_op = ir_to_combo_op(ir_q);
+    always_comb begin
+        unique case (ir_q)
+            8'h63, 8'h67, 8'h6F, 8'h73, 8'h77, 8'h7B, 8'h7F: combo_uses_alu_co = 1'b1; // RRA
+            default:                                          combo_uses_alu_co = 1'b0;
+        endcase
+        unique case (combo_op)
+            ALU_CMP, ALU_NONE: combo_writes_a = 1'b0;
+            default:           combo_writes_a = 1'b1;
+        endcase
+    end
+
+    mos6502_alu u_alu_combo (
+        .op        (combo_op),
+        .a         (a_q),
+        .b         (alu_result),
+        .carry_in  (combo_uses_alu_co ? alu_co : p_q[0]),
+        .decimal   (1'b0),    // undoc combos always operate in binary mode
+        .result    (combo_result),
+        .carry_out (combo_co),
+        .overflow  (combo_ov),
+        .zero      (combo_zr),
+        .negative  (combo_ne)
+    );
+
+    logic is_combined_rmw;
+    assign is_combined_rmw = (combo_op != ALU_NONE);
+
+    // ------------------------------------------------------------------------
+    // Undocumented immediate-mode ALU combos (ANC, ALR, ARR, AXS).
+    // ------------------------------------------------------------------------
+    logic is_imm_undoc_combo;
+    always_comb begin
+        unique case (ir_q)
+            8'h0B, 8'h2B, 8'h4B, 8'h6B, 8'hCB: is_imm_undoc_combo = 1'b1;
+            default:                            is_imm_undoc_combo = 1'b0;
+        endcase
+    end
+
+    logic [7:0] imm_combo_result;
+    logic [7:0] a_and_imm;
+    logic [8:0] axs_sub;
+    assign a_and_imm = a_q & data_in;
+    assign axs_sub   = {1'b0, a_q & x_q} + {1'b0, ~data_in} + 9'd1;
+    always_comb begin
+        unique case (ir_q)
+            8'h0B, 8'h2B: imm_combo_result = a_and_imm;
+            8'h4B:        imm_combo_result = {1'b0, a_and_imm[7:1]};
+            8'h6B:        imm_combo_result = {p_q[0], a_and_imm[7:1]};
+            8'hCB:        imm_combo_result = axs_sub[7:0];
+            default:      imm_combo_result = 8'h00;
+        endcase
+    end
 
     // ------------------------------------------------------------------------
     // Bus output and next state — combinational.
@@ -648,6 +730,8 @@ module mos6502_core
     logic alu_commit_a;      // commit ALU result to A (ORA/AND/EOR/ADC/SBC)
     logic alu_commit_xy;     // commit ALU result for INX/INY/DEX/DEY (am=IMPL)
     logic alu_commit_acc;    // commit ALU result to A for ASL A / LSR A / etc.
+    logic alu_commit_imm_a;  // commit imm_combo_result to A (ANC/ALR/ARR)
+    logic alu_commit_imm_x;  // commit imm_combo_result to X (AXS)
     logic rmw_latch;         // latch data_in into alu_in_q at this *_RW cycle
     logic flag_update_nz;    // update N/Z
     logic flag_update_c;     // update C
@@ -705,6 +789,8 @@ module mos6502_core
         alu_commit_a    = 1'b0;
         alu_commit_xy   = 1'b0;
         alu_commit_acc  = 1'b0;
+        alu_commit_imm_a = 1'b0;
+        alu_commit_imm_x = 1'b0;
         rmw_latch       = 1'b0;
         flag_update_nz  = 1'b0;
         flag_update_c   = 1'b0;
@@ -723,6 +809,35 @@ module mos6502_core
         end else if (is_rmw_read_cycle) begin
             // Latch the operand byte; flags update at S_RMW_WRITE.
             rmw_latch = 1'b1;
+        end else if (is_alu_compute_cycle && is_imm_undoc_combo) begin
+            // ANC / ALR / ARR / AXS — undocumented immediate ALU combos.
+            flag_update_nz = 1'b1;
+            nz_value       = imm_combo_result;
+            unique case (ir_q)
+                8'h0B, 8'h2B: begin   // ANC: A = A & imm; C = result[7]
+                    alu_commit_imm_a = 1'b1;
+                    flag_update_c    = 1'b1;
+                    c_value          = imm_combo_result[7];
+                end
+                8'h4B: begin          // ALR: A = (A & imm) >> 1; C = pre-LSR bit 0
+                    alu_commit_imm_a = 1'b1;
+                    flag_update_c    = 1'b1;
+                    c_value          = a_and_imm[0];
+                end
+                8'h6B: begin          // ARR: ROR(A & imm); C=res[6]; V=res[6]^res[5]
+                    alu_commit_imm_a = 1'b1;
+                    flag_update_c    = 1'b1;
+                    flag_update_v    = 1'b1;
+                    c_value          = imm_combo_result[6];
+                    v_value          = imm_combo_result[6] ^ imm_combo_result[5];
+                end
+                8'hCB: begin          // AXS: X = (A & X) - imm; C = no borrow
+                    alu_commit_imm_x = 1'b1;
+                    flag_update_c    = 1'b1;
+                    c_value          = axs_sub[8];
+                end
+                default: ;
+            endcase
         end else if (is_alu_compute_cycle) begin
             // ALU op on memory operand.
             unique case (alu_op)
@@ -757,16 +872,44 @@ module mos6502_core
                 default: ;
             endcase
         end else if (state_q == S_RMW_WRITE) begin
-            // Memory RMW final write: also update flags from the ALU result.
-            flag_update_nz = 1'b1;
-            nz_value       = alu_result;
-            unique case (alu_op)
-                ALU_ASL, ALU_LSR, ALU_ROL, ALU_ROR: begin
-                    flag_update_c = 1'b1;
-                    c_value       = alu_co;
-                end
-                default: ;  // INC/DEC: only N/Z
-            endcase
+            // Memory RMW final write.
+            if (is_combined_rmw) begin
+                // Undocumented RMW+ALU: flags reflect the A-side combo
+                // result (and the C from either the shift or the ADC/SBC).
+                flag_update_nz = 1'b1;
+                nz_value       = combo_result;
+                unique case (combo_op)
+                    ALU_CMP: begin
+                        flag_update_c = 1'b1;
+                        c_value       = combo_co;     // DCP: a >= new_M
+                    end
+                    ALU_SBC, ALU_ADC: begin
+                        flag_update_c = 1'b1;
+                        flag_update_v = 1'b1;
+                        c_value       = combo_co;
+                        v_value       = combo_ov;
+                    end
+                    ALU_ORA, ALU_AND, ALU_EOR: begin
+                        // SLO/RLA/SRE: C comes from the shift, not the
+                        // bitwise op.
+                        flag_update_c = 1'b1;
+                        c_value       = alu_co;
+                    end
+                    default: ;
+                endcase
+            end else begin
+                // Documented RMW: flags from the ALU result (the new value
+                // written to memory).
+                flag_update_nz = 1'b1;
+                nz_value       = alu_result;
+                unique case (alu_op)
+                    ALU_ASL, ALU_LSR, ALU_ROL, ALU_ROR: begin
+                        flag_update_c = 1'b1;
+                        c_value       = alu_co;
+                    end
+                    default: ;  // INC/DEC: only N/Z
+                endcase
+            end
         end else if (acc_rmw_active) begin
             // ASL A / LSR A / ROL A / ROR A: write back to A.
             alu_commit_acc = 1'b1;
@@ -1045,6 +1188,16 @@ module mos6502_core
                 a_q <= alu_result;
             end
 
+            // Combined-RMW A-side commit (SLO/RLA/SRE/RRA/ISC write A;
+            // DCP does not). Fires at the final RMW write cycle.
+            if ((state_q == S_RMW_WRITE) && is_combined_rmw && combo_writes_a) begin
+                a_q <= combo_result;
+            end
+
+            // Immediate-mode undoc combos.
+            if (alu_commit_imm_a) a_q <= imm_combo_result;
+            if (alu_commit_imm_x) x_q <= imm_combo_result;
+
             // PLA / PLP commit (at S_PULL_T3, the cycle when DB has the
             // pulled byte). PLA = $68, PLP = $28.
             if (state_q == S_PULL_T3) begin
@@ -1115,7 +1268,8 @@ module mos6502_core
     // Tie-offs.
     // ------------------------------------------------------------------------
     // verilator lint_off UNUSEDSIGNAL
-    wire _unused = &{1'b0, alu_zr, alu_ne, opk_next, p_q[7:4], p_q[2:1]};
+    wire _unused = &{1'b0, alu_zr, alu_ne, opk_next,
+                     combo_zr, combo_ne, p_q[7:4], p_q[2:1]};
     // verilator lint_on UNUSEDSIGNAL
 
 endmodule

@@ -224,6 +224,64 @@ module mos6502_decode
             8'hA3: begin addr_mode = AM_INDX; op_kind = OP_LOAD; end
             8'hB3: begin addr_mode = AM_INDY; op_kind = OP_LOAD; end
 
+            // DCP (DEC + CMP). RMW family with a CMP A vs new memory in
+            // the final write cycle. Modes: (zp,X) / zp / abs / (zp),Y /
+            // zp,X / abs,Y / abs,X.
+            8'hC3: begin addr_mode = AM_INDX; op_kind = OP_RMW; end
+            8'hC7: begin addr_mode = AM_ZP;   op_kind = OP_RMW; end
+            8'hCF: begin addr_mode = AM_ABS;  op_kind = OP_RMW; end
+            8'hD3: begin addr_mode = AM_INDY; op_kind = OP_RMW; end
+            8'hD7: begin addr_mode = AM_ZPX;  op_kind = OP_RMW; end
+            8'hDB: begin addr_mode = AM_ABSY; op_kind = OP_RMW; end
+            8'hDF: begin addr_mode = AM_ABSX; op_kind = OP_RMW; end
+            // ISC (INC + SBC).
+            8'hE3: begin addr_mode = AM_INDX; op_kind = OP_RMW; end
+            8'hE7: begin addr_mode = AM_ZP;   op_kind = OP_RMW; end
+            8'hEF: begin addr_mode = AM_ABS;  op_kind = OP_RMW; end
+            8'hF3: begin addr_mode = AM_INDY; op_kind = OP_RMW; end
+            8'hF7: begin addr_mode = AM_ZPX;  op_kind = OP_RMW; end
+            8'hFB: begin addr_mode = AM_ABSY; op_kind = OP_RMW; end
+            8'hFF: begin addr_mode = AM_ABSX; op_kind = OP_RMW; end
+            // SLO (ASL + ORA).
+            8'h03: begin addr_mode = AM_INDX; op_kind = OP_RMW; end
+            8'h07: begin addr_mode = AM_ZP;   op_kind = OP_RMW; end
+            8'h0F: begin addr_mode = AM_ABS;  op_kind = OP_RMW; end
+            8'h13: begin addr_mode = AM_INDY; op_kind = OP_RMW; end
+            8'h17: begin addr_mode = AM_ZPX;  op_kind = OP_RMW; end
+            8'h1B: begin addr_mode = AM_ABSY; op_kind = OP_RMW; end
+            8'h1F: begin addr_mode = AM_ABSX; op_kind = OP_RMW; end
+            // RLA (ROL + AND).
+            8'h23: begin addr_mode = AM_INDX; op_kind = OP_RMW; end
+            8'h27: begin addr_mode = AM_ZP;   op_kind = OP_RMW; end
+            8'h2F: begin addr_mode = AM_ABS;  op_kind = OP_RMW; end
+            8'h33: begin addr_mode = AM_INDY; op_kind = OP_RMW; end
+            8'h37: begin addr_mode = AM_ZPX;  op_kind = OP_RMW; end
+            8'h3B: begin addr_mode = AM_ABSY; op_kind = OP_RMW; end
+            8'h3F: begin addr_mode = AM_ABSX; op_kind = OP_RMW; end
+            // SRE (LSR + EOR).
+            8'h43: begin addr_mode = AM_INDX; op_kind = OP_RMW; end
+            8'h47: begin addr_mode = AM_ZP;   op_kind = OP_RMW; end
+            8'h4F: begin addr_mode = AM_ABS;  op_kind = OP_RMW; end
+            8'h53: begin addr_mode = AM_INDY; op_kind = OP_RMW; end
+            8'h57: begin addr_mode = AM_ZPX;  op_kind = OP_RMW; end
+            8'h5B: begin addr_mode = AM_ABSY; op_kind = OP_RMW; end
+            8'h5F: begin addr_mode = AM_ABSX; op_kind = OP_RMW; end
+            // RRA (ROR + ADC).
+            8'h63: begin addr_mode = AM_INDX; op_kind = OP_RMW; end
+            8'h67: begin addr_mode = AM_ZP;   op_kind = OP_RMW; end
+            8'h6F: begin addr_mode = AM_ABS;  op_kind = OP_RMW; end
+            8'h73: begin addr_mode = AM_INDY; op_kind = OP_RMW; end
+            8'h77: begin addr_mode = AM_ZPX;  op_kind = OP_RMW; end
+            8'h7B: begin addr_mode = AM_ABSY; op_kind = OP_RMW; end
+            8'h7F: begin addr_mode = AM_ABSX; op_kind = OP_RMW; end
+
+            // Immediate-mode undoc ALU combos: 2-cycle IMM, op specialized
+            // at the commit site in the core.
+            8'h0B, 8'h2B: begin addr_mode = AM_IMM; op_kind = OP_ALU; end // ANC
+            8'h4B:        begin addr_mode = AM_IMM; op_kind = OP_ALU; end // ALR
+            8'h6B:        begin addr_mode = AM_IMM; op_kind = OP_ALU; end // ARR
+            8'hCB:        begin addr_mode = AM_IMM; op_kind = OP_ALU; end // AXS
+
             default: begin addr_mode = AM_UNK; op_kind = OP_UNK; end
         endcase
     end
