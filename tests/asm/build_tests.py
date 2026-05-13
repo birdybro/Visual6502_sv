@@ -438,6 +438,59 @@ def m8a_rmw_combos():
     return prog
 
 
+def m8b_unstable():
+    """Exercises the unstable / magic-constant undocumented opcodes
+    (XAA, LAS, TAS, SHX, SHY, AHX) using inputs where the result is
+    deterministic regardless of the silicon's analog state.
+
+    - XAA with X=0 or imm=0 yields A=0 regardless of the magic constant.
+    - SHX/SHY/AHX/TAS without page crossing: store value = reg & (hi+1),
+      target address = base + index.
+    - LAS: A=X=S = mem & S, well-defined.
+    """
+    prog = [
+        # ---- XAA with X=0  (A=0 regardless of constant) ----
+        0xA9, 0xFF,             # LDA #$FF
+        0xA2, 0x00,             # LDX #$00
+        0x8B, 0xAA,             # XAA #$AA  → A = (A|const) & 0 & ... = 0
+        # ---- XAA with imm=0  (A=0) ----
+        0xA9, 0x33,             # LDA #$33
+        0xA2, 0xFF,             # LDX #$FF
+        0x8B, 0x00,             # XAA #$00  → A = ... & 0 = 0
+        # ---- SHX abs,Y  no page cross ----
+        # Base = $0200, Y=$10, target = $0210. hi+1 = $03. X = $0F. Store $0F&$03 = $03.
+        0xA0, 0x10,             # LDY #$10
+        0xA2, 0x0F,             # LDX #$0F
+        0x9E, 0x00, 0x02,       # SHX $0200,Y
+        # ---- SHY abs,X  no page cross ----
+        # Base = $0300, X=$08, target = $0308. hi+1 = $04. Y = $05. Store $05&$04 = $04.
+        0xA2, 0x08,             # LDX #$08
+        0xA0, 0x05,             # LDY #$05
+        0x9C, 0x00, 0x03,       # SHY $0300,X
+        # ---- AHX abs,Y  no page cross ----
+        # Base = $0400, Y=$12, target = $0412. hi+1 = $05. A=$F0, X=$77.
+        # Store A&X&(hi+1) = $F0 & $77 & $05 = $00.
+        0xA9, 0xF0, 0xA2, 0x77, 0xA0, 0x12,
+        0x9F, 0x00, 0x04,       # AHX $0400,Y
+        # ---- TAS abs,Y  no page cross ----
+        # A=$33, X=$F0, Y=$08, base=$0500, target=$0508. hi+1=$06.
+        # S = A&X = $30. Store S&(hi+1) = $30 & $06 = $00.
+        0xA9, 0x33, 0xA2, 0xF0, 0xA0, 0x08,
+        0x9B, 0x00, 0x05,       # TAS $0500,Y
+        # ---- LAS abs,Y ----
+        # First prime mem[$0610] with $5A via STA.
+        0xA9, 0x5A, 0xA0, 0x10, 0x99, 0x00, 0x06,  # LDA #$5A; LDY #$10; STA $0600,Y
+        # Now LAS reads $0610. Need to set S first.
+        0xA2, 0xFF, 0x9A,       # LDX #$FF; TXS  → S=$FF
+        0xA0, 0x10,             # LDY #$10
+        0xBB, 0x00, 0x06,       # LAS $0600,Y  → A=X=S = $5A & $FF = $5A
+    ]
+    # Self-loop tail so PC doesn't walk into the wrote data.
+    jmp_addr = len(prog)
+    prog += [0x4C, jmp_addr & 0xFF, (jmp_addr >> 8) & 0xFF]
+    return prog
+
+
 TESTS = {
     "nop_loop": (m3_nop, 0x0000),
     "m4_loadstore": (m4_loadstore, 0x0000),
@@ -446,6 +499,7 @@ TESTS = {
     "m7_branches": (m7_branches, None),
     "m8_undoc": (m8_undoc, 0x0000),
     "m8a_rmw_combos": (m8a_rmw_combos, 0x0000),
+    "m8b_unstable": (m8b_unstable, 0x0000),
 }
 
 

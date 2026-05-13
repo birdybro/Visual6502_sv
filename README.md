@@ -21,7 +21,7 @@ core is verified against those traces.
 | M5 — ALU, ADC/SBC (binary + decimal), shifts | done | ADC/SBC/AND/ORA/EOR/CMP/CPX/CPY/BIT/ASL/LSR/ROL/ROR/INC/DEC/INX/INY/DEX/DEY/flag-instr. |
 | M6 — Stack, JSR/RTS, BRK/RTI, IRQ/NMI | done | PHA/PHP/PLA/PLP, JSR/RTS, BRK/RTI, IRQ entry. NMI implemented; precise cycle alignment varies in some patterns. |
 | M7 — Branches, page crossings, JMP indirect bug | done | All 8 branches, fwd/bwd page cross, JMP abs, JMP $xxFF wrap bug. |
-| M8 — Undocumented opcodes, broader ROM | done | NOPs (1/2/3-byte), SAX, LAX, plus the combined RMW+ALU family (DCP/ISC/SLO/RLA/SRE/RRA × 7 modes each) and the immediate combos (ANC/ALR/ARR/AXS). Unstable opcodes (XAA/AHX/SHX/SHY/TAS/LAS) documented as not modelable. |
+| M8 — Undocumented opcodes, broader ROM | done | NOPs (1/2/3-byte), SAX, LAX, the combined RMW+ALU family (DCP/ISC/SLO/RLA/SRE/RRA × 7 modes each), the immediate combos (ANC/ALR/ARR/AXS), and the unstable/magic-constant opcodes (XAA/LAS/TAS/SHX/SHY/AHX) with documented limitations on page-crossing corruption. |
 | M9 — Synthesis polish, MiSTer wrapper | done | Lint clean -Wall, RDY/SO pins live, `rtl/common/mos6502_mister.sv` wrapper, `make synth` documented, `scripts/run_ci.sh` end-to-end. |
 | M9 — Synthesis polish, optional MiSTer wrapper | pending | |
 

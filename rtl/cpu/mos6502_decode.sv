@@ -282,6 +282,18 @@ module mos6502_decode
             8'h6B:        begin addr_mode = AM_IMM; op_kind = OP_ALU; end // ARR
             8'hCB:        begin addr_mode = AM_IMM; op_kind = OP_ALU; end // AXS
 
+            // Unstable / magic-constant undocumented opcodes (best-effort).
+            // The analog behavior of these on real silicon varies across
+            // chips, temperature, etc. We implement the documented
+            // "deterministic-ish" semantics. See DESIGN.md for the caveats.
+            8'h8B:        begin addr_mode = AM_IMM;  op_kind = OP_ALU;   end // XAA #imm
+            8'hBB:        begin addr_mode = AM_ABSY; op_kind = OP_LOAD;  end // LAS abs,Y
+            8'h9B:        begin addr_mode = AM_ABSY; op_kind = OP_STORE; end // TAS abs,Y
+            8'h9C:        begin addr_mode = AM_ABSX; op_kind = OP_STORE; end // SHY abs,X
+            8'h9E:        begin addr_mode = AM_ABSY; op_kind = OP_STORE; end // SHX abs,Y
+            8'h9F:        begin addr_mode = AM_ABSY; op_kind = OP_STORE; end // AHX abs,Y
+            8'h93:        begin addr_mode = AM_INDY; op_kind = OP_STORE; end // AHX (zp),Y
+
             default: begin addr_mode = AM_UNK; op_kind = OP_UNK; end
         endcase
     end

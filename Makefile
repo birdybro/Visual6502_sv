@@ -44,7 +44,7 @@ TRACE_DIR   := $(ROOT_DIR)/tests/traces
 
 .PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check \
         test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8 test-m8a \
-        test-dormann test-dormann-irq synth synth-mister ci
+        test-m8b test-dormann test-dormann-irq synth synth-mister ci
 
 all: sim
 
@@ -59,7 +59,8 @@ $(SIM_BIN): $(RTL_SRCS) $(TB_CPP)
 	@echo ">>> verilator build"
 	$(VERILATOR) $(VFLAGS_BUILD) $(RTL_SRCS) $(TB_CPP)
 
-test: sim trace-self-check test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8 test-m8a
+test: sim trace-self-check test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 \
+      test-m8 test-m8a test-m8b
 	@echo "all tests OK"
 
 # ---- Per-milestone RTL tests -----------------------------------------------
@@ -192,6 +193,25 @@ test-m8a: sim tests/asm/m8a_rmw_combos.bin
 
 tests/asm/m8a_rmw_combos.bin: tests/asm/build_tests.py
 	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m8a_rmw_combos --out $@
+
+M8B_UNSTABLE_BIN := $(ROOT_DIR)/tests/asm/m8b_unstable.bin
+
+# M8b: unstable / magic-constant undocumented opcodes (XAA, LAS, TAS, SHX,
+# SHY, AHX). Tests use inputs where the result is deterministic regardless
+# of silicon analog state — XAA with X=0 or imm=0 → 0; SHX/SHY/AHX/TAS with
+# no page crossing → reg & (hi+1). 344 cycles match Visual6502.
+test-m8b: sim tests/asm/m8b_unstable.bin
+	@echo ">>> M8b test: unstable undoc (XAA/LAS/TAS/SHX/SHY/AHX, deterministic inputs)"
+	$(SIM_BIN) +mem=$(M8B_UNSTABLE_BIN) +cycles=350 \
+	        +trace=$(RTL_TRACE_DIR)/rtl_m8b_unstable.tsv +quiet
+	$(PYTHON) $(TRACE_CMP) $(TRACE_DIR)/m8b_unstable.tsv \
+	        $(RTL_TRACE_DIR)/rtl_m8b_unstable.tsv \
+	        --ref-skip $(REF_SKIP_TO_FETCH) --rtl-skip $(RTL_SKIP_TO_FETCH) \
+	        --fields ab,db,rw,sync
+	@echo "M8b OK"
+
+tests/asm/m8b_unstable.bin: tests/asm/build_tests.py
+	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m8b_unstable --out $@
 
 # Klaus Dormann's 6502 functional test — runs the entire test ROM end-to-end.
 # Success: PC reaches the test-finished self-loop at $3469 with mem[$0200]=$F0.

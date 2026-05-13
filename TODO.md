@@ -115,10 +115,11 @@ Living checklist. Update as work progresses. Items marked `[x]` are done,
 - [x] DCP / ISC: combined RMW + CMP/SBC via second combo ALU instance.
 - [x] SLO / RLA / SRE / RRA: combined RMW shift + ALU on A.
 - [x] ANC / ALR / ARR / AXS: 2-cycle immediate combos via inline arith.
-- [ ] Unstable: XAA / AHX / SHX / SHY / TAS / LAS — behavior depends on
-      transistor analog state (magic constant patterns); not modeled in
-      clean RTL. They reach the FSM's "unknown opcode → 2-cycle dummy"
-      path and won't crash, but won't match Visual6502.
+- [x] Unstable: XAA / AHX / SHX / SHY / TAS / LAS — implemented with the
+      documented deterministic semantics: XAA uses const $EE; the store
+      family writes `reg & (base_hi + 1)`. Page-crossing corruption
+      anomaly NOT modeled (documented in DESIGN.md). `make test-m8b`
+      verifies 344 cycles against Visual6502 with no-page-cross inputs.
 - [x] Klaus Dormann 6502 functional test ROM end-to-end run — PASSES at
       ~96M cycles. PC reaches the test-finished self-loop at $3469 with
       mem[$0200]=$F0 (the canonical "all tests passed" marker). The

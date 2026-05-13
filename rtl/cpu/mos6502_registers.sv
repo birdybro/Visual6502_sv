@@ -82,6 +82,11 @@ module mos6502_registers
     input  logic        n_override,
     input  logic        v_override,
 
+    // Unstable undocumented opcode commits.
+    input  logic        las_commit,
+    input  logic [7:0]  las_value,
+    input  logic        tas_s_commit,
+
     // Outputs.
     output logic [7:0]  a_q,
     output logic [7:0]  x_q,
@@ -342,6 +347,15 @@ module mos6502_registers
             end
             if (alu_commit_imm_a) a_q <= imm_combo_result;
             if (alu_commit_imm_x) x_q <= imm_combo_result;
+
+            // LAS: write A, X, S simultaneously with data_in & S.
+            if (las_commit) begin
+                a_q <= las_value;
+                x_q <= las_value;
+                s_q <= las_value;
+            end
+            // TAS: S = A & X at the store cycle.
+            if (tas_s_commit) s_q <= a_q & x_q;
         end
     end
 

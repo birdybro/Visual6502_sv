@@ -84,15 +84,32 @@ module mos6502_core
     logic indexed_dummy_skippable;
     assign indexed_dummy_skippable = !is_store && !is_rmw_mem && !idx_carry_q;
 
+    // High byte of the *base* address (pre-fixup) used by the unstable
+    // store-undoc family (AHX/SHX/SHY/TAS): the value stored is
+    // reg & (base_addr_hi + 1).  By the time we reach the *_RW state,
+    // ad_hi_q has already been fixed up if a page crossed; recover the
+    // original via ad_hi - idx_carry.
+    logic [7:0] base_ad_hi_plus_one;
+    assign base_ad_hi_plus_one = ad_hi_q - {7'b0, idx_carry_q} + 8'h01;
+
     // Target register for LD?/ST? from IR[1:0]. 00=Y, 01=A, 10=X, 11=SAX/LAX.
+    // The unstable store family ($9B/$9C/$9E/$9F/$93) is special-cased.
     logic [7:0] store_src;
     always_comb begin
-        unique case (ir_q[1:0])
-            2'b00:   store_src = y_q;
-            2'b01:   store_src = a_q;
-            2'b10:   store_src = x_q;
-            2'b11:   store_src = a_q & x_q;
-            default: store_src = 8'h00;
+        unique case (ir_q)
+            8'h9F, 8'h93: store_src = a_q & x_q & base_ad_hi_plus_one; // AHX
+            8'h9B:        store_src = (a_q & x_q) & base_ad_hi_plus_one; // TAS
+            8'h9E:        store_src = x_q & base_ad_hi_plus_one;       // SHX
+            8'h9C:        store_src = y_q & base_ad_hi_plus_one;       // SHY
+            default: begin
+                unique case (ir_q[1:0])
+                    2'b00:   store_src = y_q;
+                    2'b01:   store_src = a_q;
+                    2'b10:   store_src = x_q;
+                    2'b11:   store_src = a_q & x_q;     // SAX
+                    default: store_src = 8'h00;
+                endcase
+            end
         endcase
     end
     logic [2:0] load_target;
@@ -237,18 +254,20 @@ module mos6502_core
     logic is_combined_rmw;
     assign is_combined_rmw = (combo_op != ALU_NONE);
 
-    // Undocumented immediate ALU combos (ANC / ALR / ARR / AXS).
+    // Undocumented immediate ALU combos (ANC / ALR / ARR / AXS / XAA).
     logic is_imm_undoc_combo;
     always_comb begin
         unique case (ir_q)
-            8'h0B, 8'h2B, 8'h4B, 8'h6B, 8'hCB: is_imm_undoc_combo = 1'b1;
-            default:                            is_imm_undoc_combo = 1'b0;
+            8'h0B, 8'h2B, 8'h4B, 8'h6B, 8'hCB, 8'h8B: is_imm_undoc_combo = 1'b1;
+            default:                                   is_imm_undoc_combo = 1'b0;
         endcase
     end
 
     logic [7:0] imm_combo_result;
     logic [7:0] a_and_imm;
     logic [8:0] axs_sub;
+    // XAA "magic constant" — varies by chip; $EE is a documented common value.
+    localparam logic [7:0] XAA_CONST = 8'hEE;
     assign a_and_imm = a_q & data_in;
     assign axs_sub   = {1'b0, a_q & x_q} + {1'b0, ~data_in} + 9'd1;
     always_comb begin
@@ -257,6 +276,7 @@ module mos6502_core
             8'h4B:        imm_combo_result = {1'b0, a_and_imm[7:1]};
             8'h6B:        imm_combo_result = {p_q[0], a_and_imm[7:1]};
             8'hCB:        imm_combo_result = axs_sub[7:0];
+            8'h8B:        imm_combo_result = (a_q | XAA_CONST) & x_q & data_in; // XAA
             default:      imm_combo_result = 8'h00;
         endcase
     end
@@ -599,6 +619,10 @@ module mos6502_core
     logic alu_commit_imm_a;
     logic alu_commit_imm_x;
     logic rmw_latch;
+    // Unstable-opcode side channels.
+    logic       las_commit;     // LAS ($BB): write A=X=S=data&S
+    logic [7:0] las_value;
+    logic       tas_s_commit;   // TAS ($9B): S = A & X (no flags)
     logic flag_update_nz;
     logic flag_update_c;
     logic flag_update_v;
@@ -608,6 +632,14 @@ module mos6502_core
     logic       n_override;
     logic       v_override;
     logic       use_overrides;
+
+    // LAS commit: at the load cycle of LAS, write A=X=S = data_in & S.
+    assign las_value  = data_in & s_q;
+    assign las_commit = in_rw_state && (ir_q == 8'hBB);
+    // TAS S commit: at the store cycle of TAS, S = A & X.
+    assign tas_s_commit = ((state_q == S_ABSI_RW) ||
+                           ((state_q == S_ABSI_DUMMY) && indexed_dummy_skippable))
+                          && (ir_q == 8'h9B);
 
     always_comb begin
         load_commit      = 1'b0;
@@ -627,7 +659,12 @@ module mos6502_core
         v_override       = 1'b0;
         use_overrides    = 1'b0;
 
-        if (is_load_cycle) begin
+        if (las_commit) begin
+            // LAS handles its own commit (A,X,S) and flags in the register
+            // file; we just signal N/Z update from the LAS value.
+            flag_update_nz = 1'b1;
+            nz_value       = las_value;
+        end else if (is_load_cycle) begin
             load_commit    = 1'b1;
             flag_update_nz = 1'b1;
             nz_value       = data_in;
@@ -658,6 +695,10 @@ module mos6502_core
                     alu_commit_imm_x = 1'b1;
                     flag_update_c    = 1'b1;
                     c_value          = axs_sub[8];
+                end
+                8'h8B: begin
+                    // XAA: A = (A | const) & X & imm. No carry update.
+                    alu_commit_imm_a = 1'b1;
                 end
                 default: ;
             endcase
@@ -741,6 +782,9 @@ module mos6502_core
     // ------------------------------------------------------------------------
     // Register file.
     // ------------------------------------------------------------------------
+    // LAS / TAS commits are appended on top of the generic load_target /
+    // store_src plumbing — they don't fit the per-register write-enable
+    // model so the register file handles them as separate strobed actions.
     mos6502_registers u_regs (
         .clk              (clk),
         .reset_n          (reset_n),
@@ -786,6 +830,9 @@ module mos6502_core
         .use_overrides    (use_overrides),
         .n_override       (n_override),
         .v_override       (v_override),
+        .las_commit       (las_commit),
+        .las_value        (las_value),
+        .tas_s_commit     (tas_s_commit),
         .a_q              (a_q),
         .x_q              (x_q),
         .y_q              (y_q),

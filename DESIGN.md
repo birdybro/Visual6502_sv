@@ -130,6 +130,33 @@ Notes:
 
 These are listed so future readers do not "fix" their absence.
 
+## Unstable undocumented opcodes
+
+The six analog-state-dependent opcodes are implemented best-effort with
+the documented "deterministic-ish" semantics:
+
+| Opcode | Behavior implemented |
+|---|---|
+| `XAA #imm` ($8B) | `A = (A | $EE) & X & imm`. The "$EE" magic constant varies between real chips and is temperature-dependent; we use $EE as a documented common value. |
+| `LAS abs,Y` ($BB) | `A = X = S = memory & S_old`. Deterministic. |
+| `TAS abs,Y` ($9B) | `S = A & X`, then `memory[target] = S & (addr_hi + 1)`. |
+| `SHX abs,Y` ($9E) | `memory[target] = X & (addr_hi + 1)`. |
+| `SHY abs,X` ($9C) | `memory[target] = Y & (addr_hi + 1)`. |
+| `AHX abs,Y` ($9F) / `AHX (zp),Y` ($93) | `memory[target] = A & X & (addr_hi + 1)`. |
+
+`addr_hi + 1` always refers to the **base** address's high byte plus one
+(pre-fixup), recovered at the write cycle as `ad_hi - idx_carry + 1`.
+
+**Not modeled:** the "page-crossing corruption" anomaly. On real
+silicon, when `(addr_lo + index) > $FF` for SHX/SHY/AHX/TAS, the
+high byte of the *actually-written* address gets ANDed with the
+computed value, scrambling the destination. We write to the correctly
+fixed-up address instead. Tests for these opcodes use no-page-cross
+inputs so the implementations match Visual6502 byte-for-byte (344
+cycles verified via `make test-m8b`); programs that depend on the
+page-crossing anomaly will diverge. The anomaly is rarely intentional
+in shipping software.
+
 ## Module structure
 
 | File | Role |
