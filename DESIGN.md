@@ -130,6 +130,30 @@ Notes:
 
 These are listed so future readers do not "fix" their absence.
 
+## Module structure
+
+| File | Role |
+|---|---|
+| `rtl/cpu/mos6502_pkg.sv` | Typedefs: `addr_mode_e`, `op_kind_e`, `alu_op_e`, `state_e`, `int_mode_e` |
+| `rtl/cpu/mos6502_alu.sv` | Combinational ALU (binary + decimal ADC/SBC + shifts + CMP + BIT) |
+| `rtl/cpu/mos6502_decode.sv` | Combinational opcode → `(addr_mode, op_kind)` |
+| `rtl/cpu/mos6502_registers.sv` | Synchronous register file: architectural (A/X/Y/S/P/IR/PC) + staging (`ad_lo`, `ad_hi`, `ptr`, `idx_carry`, `alu_in`, `rmw_target`, branch staging, NMI edge latch, interrupt mode) |
+| `rtl/cpu/mos6502_core.sv` | Top-level wirer + combinational FSM + commit-signal generation |
+| `rtl/common/mos6502_mister.sv` | MiSTer-compatible wrapper (`cen`, `phi1_out`, `phi2_out`) |
+
+The spec's suggested names `mos6502_addrgen`, `mos6502_bus_if`, and
+`mos6502_control` were considered as separate modules and rejected. The
+FSM is built as a single per-state `case (state_q)` that sets
+`state_d`, `address_d`, `data_out_d`, `rw_d`, and `sync_d` together —
+splitting these into three modules would duplicate the case statement
+three times and obscure the per-state behavior rather than clarify it.
+The control/address-gen/bus-output logic instead lives co-located in
+`mos6502_core.sv`, with the comment headers marking the three
+conceptual concerns. The register-file split (`mos6502_registers.sv`)
+is the clean separation that did pay off — all synchronous storage is
+in one place, and `mos6502_core.sv` is purely combinational logic +
+submodule instances.
+
 ## Verification strategy
 
 See `README.md` for the workflow. The short version: every implemented
