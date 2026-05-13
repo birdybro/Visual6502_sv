@@ -39,9 +39,11 @@ module mos6502_alu
     // Binary add / sub backbone.
     // ------------------------------------------------------------------------
     logic [8:0] sum_bin;       // a + b + cin
-    logic [8:0] sub_bin;       // a + ~b + cin = a - b - !cin
+    logic [8:0] sub_bin;       // a + ~b + cin = a - b - !cin   (SBC)
+    logic [8:0] cmp_bin;       // a + ~b + 1    = a - b         (CMP: cin forced to 1)
     assign sum_bin = {1'b0, a} + {1'b0, b} + {8'b0, carry_in};
     assign sub_bin = {1'b0, a} + {1'b0, ~b} + {8'b0, carry_in};
+    assign cmp_bin = {1'b0, a} + {1'b0, ~b} + 9'd1;
 
     logic v_adc_bin;
     logic v_sbc_bin;
@@ -156,9 +158,11 @@ module mos6502_alu
             ALU_INC:    result = a + 8'd1;
             ALU_DEC:    result = a - 8'd1;
             ALU_CMP: begin
-                // a - b for flag purposes. Result is the subtraction's low 8.
-                result    = sub_bin[7:0];
-                carry_out = sub_bin[8];     // C set if no borrow (a >= b)
+                // a - b for flag purposes. The 6502's CMP always treats the
+                // carry-in to the subtractor as 1, regardless of the C flag
+                // (unlike SBC which honors C).
+                result    = cmp_bin[7:0];
+                carry_out = cmp_bin[8];     // C set if no borrow (a >= b)
             end
             ALU_BIT: begin
                 // result = a & b for Z. N/V come from b directly — the FSM

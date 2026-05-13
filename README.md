@@ -10,7 +10,7 @@ core is verified against those traces.
 
 ## Status
 
-Milestone 8 (full stable undocumented opcode set) complete; 2052 cycles of program execution across M3-M8 match the Visual6502 reference exactly on AB/DB/RW/SYNC.
+**The CPU passes Klaus Dormann's 6502 functional test** end-to-end (~96 million cycles) and matches the Visual6502 silicon reference exactly across 2052 cycles of focused milestone tests. Run `make test-dormann` to verify.
 
 | Milestone | Status | Notes |
 |----|----|----|

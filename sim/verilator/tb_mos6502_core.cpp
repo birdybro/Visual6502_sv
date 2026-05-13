@@ -91,6 +91,13 @@ int main(int argc, char **argv) {
     int irq_dur = irq_dur_s ? static_cast<int>(parse_num(irq_dur_s)) : 4;
     int nmi_at  = nmi_at_s  ? static_cast<int>(parse_num(nmi_at_s))  : -1;
 
+    // +halt_on_loop: stop early once PC is observed in a tight self-loop
+    // (the same fetch AB appearing twice in a row with sync=1). Useful for
+    // test-ROM-style "trap on completion" patterns.
+    const bool halt_on_loop = get_plusarg(argc, argv, "halt_on_loop") != nullptr;
+    // Don't write the trace for super-long runs; suppress with +notrace.
+    const bool notrace = get_plusarg(argc, argv, "notrace") != nullptr;
+
     uint32_t load_addr = load_addr_s ? parse_num(load_addr_s) : 0x0000;
     uint32_t reset_vec = reset_vec_s ? parse_num(reset_vec_s) : load_addr;
     int      max_cycles = cycles_s   ? static_cast<int>(parse_num(cycles_s)) : 64;
@@ -151,29 +158,26 @@ int main(int argc, char **argv) {
     //   2. Drive data_in for the CPU's read latch on the next rising edge.
     //   3. Emit the trace row reflecting this cycle's bus state.
     //   4. Rising edge → state advances; AB/RW change to next cycle's values.
-    auto run_cycle = [&](int cycle_idx) -> void {
-        // 1. Write commit
+    auto run_cycle = [&](int cycle_idx, bool emit_trace) -> void {
         if (!dut->rw) {
             mem[dut->address] = dut->data_out;
         }
-        // 2. Drive data_in for the CPU
         dut->data_in = mem[dut->address];
 
-        // 3. Trace row for this cycle
-        std::fprintf(tf,
-                     "%d\t1\t%04x\t%02x\t%d\t%d\t%02x\t%02x\t%02x\t%02x\t%02x\t%04x\t%02x\n",
-                     cycle_idx,
-                     static_cast<unsigned>(dut->address & 0xFFFF),
-                     static_cast<unsigned>(mem[dut->address] & 0xFF),
-                     dut->rw ? 1 : 0,
-                     dut->sync ? 1 : 0,
-                     // Register fields not yet exposed; zero for now.
-                     0, 0, 0, 0, 0, 0, 0);
+        if (emit_trace) {
+            std::fprintf(tf,
+                         "%d\t1\t%04x\t%02x\t%d\t%d\t%02x\t%02x\t%02x\t%02x\t%02x\t%04x\t%02x\n",
+                         cycle_idx,
+                         static_cast<unsigned>(dut->address & 0xFFFF),
+                         static_cast<unsigned>(mem[dut->address] & 0xFF),
+                         dut->rw ? 1 : 0,
+                         dut->sync ? 1 : 0,
+                         0, 0, 0, 0, 0, 0, 0);
+        }
 
         if (tfp) tfp->dump(sim_time);
         sim_time += 1;
 
-        // 4. Advance: rising then falling.
         dut->clk = 1;
         dut->eval();
         if (tfp) tfp->dump(sim_time);
@@ -194,6 +198,9 @@ int main(int argc, char **argv) {
     }
     dut->reset_n = 1;
 
+    int last_sync_ab = -1;
+    int last_sync_streak = 0;
+    int final_stuck_at = -1;
     for (int c = 0; c < max_cycles && !Verilated::gotFinish(); ++c) {
         if (irq_at >= 0 && c >= irq_at && c < irq_at + irq_dur) {
             dut->irq_n = 0;
@@ -203,9 +210,41 @@ int main(int argc, char **argv) {
         if (nmi_at >= 0 && c == nmi_at) {
             dut->nmi_n = 0;
         } else if (nmi_at >= 0 && c == nmi_at + 1) {
-            dut->nmi_n = 1;   // pulse, then deassert (edge-triggered)
+            dut->nmi_n = 1;
         }
-        run_cycle(c);
+        run_cycle(c, !notrace);
+        if (halt_on_loop && dut->sync) {
+            int ab = dut->address & 0xFFFF;
+            if (ab == last_sync_ab) {
+                if (++last_sync_streak >= 2) {
+                    final_stuck_at = ab;
+                    if (!quiet) {
+                        std::fprintf(stderr,
+                                     "halt-on-loop: stuck at $%04X after %d cycles\n",
+                                     ab, c + 1);
+                        std::fprintf(stderr, "  $0200..$0207: ");
+                        for (int i = 0; i < 8; ++i)
+                            std::fprintf(stderr, "%02X ", mem[0x0200 + i]);
+                        std::fprintf(stderr, "\n  $0220..$0227: ");
+                        for (int i = 0; i < 8; ++i)
+                            std::fprintf(stderr, "%02X ", mem[0x0220 + i]);
+                        std::fprintf(stderr, "\n  $000C..$001F: ");
+                        for (int i = 0; i < 20; ++i)
+                            std::fprintf(stderr, "%02X ", mem[0x000C + i]);
+                        std::fprintf(stderr, "\n");
+                    }
+                    break;
+                }
+            } else {
+                last_sync_streak = 0;
+                last_sync_ab = ab;
+            }
+        }
+    }
+    if (halt_on_loop && final_stuck_at < 0 && !quiet) {
+        std::fprintf(stderr,
+                     "halt-on-loop: cycles exhausted (%d) without entering a self-loop\n",
+                     max_cycles);
     }
 
     if (!quiet) {

@@ -1163,12 +1163,13 @@ module mos6502_core
                 default: ;
             endcase
 
-            // Capture RMW target address at the read cycle (so RMW writes hit
-            // the same address even though ad_hi/ad_lo logic might have
-            // already changed by the time we get to *_WRITE).
+            // Capture RMW target address at the read cycle. We use the live
+            // bus address (address_d) rather than {ad_hi_q, ad_lo_q} so the
+            // zero-page modes correctly latch $00 as the high byte instead
+            // of whatever residual value ad_hi_q has from an earlier abs op.
             if (rmw_latch) begin
                 alu_in_q     <= data_in;
-                rmw_target_q <= {ad_hi_q, ad_lo_q};
+                rmw_target_q <= address;
             end
 
             // Load commit (LDA/LDX/LDY/LAX). load_target: 000=A, 001=X,

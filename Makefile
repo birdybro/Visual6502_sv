@@ -44,7 +44,7 @@ TRACE_DIR   := $(ROOT_DIR)/tests/traces
 
 .PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check \
         test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8 test-m8a \
-        synth synth-mister ci
+        test-dormann synth synth-mister ci
 
 all: sim
 
@@ -192,6 +192,20 @@ test-m8a: sim tests/asm/m8a_rmw_combos.bin
 
 tests/asm/m8a_rmw_combos.bin: tests/asm/build_tests.py
 	$(PYTHON) $(ROOT_DIR)/tests/asm/build_tests.py m8a_rmw_combos --out $@
+
+# Klaus Dormann's 6502 functional test — runs the entire test ROM end-to-end.
+# Success: PC reaches the test-finished self-loop at $3469 with mem[$0200]=$F0.
+DORMANN_BIN := $(ROOT_DIR)/tests/roms/dormann_6502_functional.bin
+test-dormann: sim
+	@echo ">>> Klaus Dormann 6502 functional test (96M cycles)"
+	@$(SIM_BIN) +mem=$(DORMANN_BIN) +reset_vec=0x0400 \
+	    +cycles=200000000 +halt_on_loop +notrace 2>$(ROOT_DIR)/build/dormann.out; \
+	if grep -qF 'stuck at $$3469' $(ROOT_DIR)/build/dormann.out \
+	   && grep -qF '0207: F0' $(ROOT_DIR)/build/dormann.out; then \
+	    echo "Dormann PASS (test counter at \$$F0, trap at \$$3469)"; \
+	else \
+	    echo "Dormann FAIL:"; cat $(ROOT_DIR)/build/dormann.out; exit 1; \
+	fi
 
 # ---- M9: synthesis + CI -----------------------------------------------------
 

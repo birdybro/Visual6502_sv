@@ -119,9 +119,13 @@ Living checklist. Update as work progresses. Items marked `[x]` are done,
       transistor analog state (magic constant patterns); not modeled in
       clean RTL. They reach the FSM's "unknown opcode → 2-cycle dummy"
       path and won't crash, but won't match Visual6502.
-- [ ] Klaus Dormann 6502 functional test ROM end-to-end run. The opcode
-      coverage should now be sufficient (the test ROM uses documented +
-      stable undocumented opcodes only).
+- [x] Klaus Dormann 6502 functional test ROM end-to-end run — PASSES at
+      ~96M cycles. PC reaches the test-finished self-loop at $3469 with
+      mem[$0200]=$F0 (the canonical "all tests passed" marker). The
+      test-driven discovery surfaced two real bugs (see commit log):
+      CMP's carry-in was wired to the live C flag instead of being
+      forced to 1; the RMW target-address latch used stale ad_hi_q for
+      zero-page modes. Both fixed.
 
 ## Milestone 9 — Synthesis polish
 
