@@ -44,7 +44,7 @@ TRACE_DIR   := $(ROOT_DIR)/tests/traces
 
 .PHONY: all lint sim test clean trace-ref-reset trace-ref-nop trace-self-check \
         test-m3 test-m4 test-m5 test-m6 test-m6-irq test-m7 test-m8 test-m8a \
-        test-dormann synth synth-mister ci
+        test-dormann test-dormann-irq synth synth-mister ci
 
 all: sim
 
@@ -205,6 +205,24 @@ test-dormann: sim
 	    echo "Dormann PASS (test counter at \$$F0, trap at \$$3469)"; \
 	else \
 	    echo "Dormann FAIL:"; cat $(ROOT_DIR)/build/dormann.out; exit 1; \
+	fi
+
+# Klaus Dormann's 6502 interrupt test — exercises IRQ, NMI, BRK behavior
+# with a memory-mapped feedback port at $BFFC (writes drive the chip's
+# irq_n / nmi_n inputs; bit 1 in the latch = active assertion).
+# Success: PC stuck at $06F5 (the `success` macro: "test passed, no errors").
+DORMANN_IRQ_BIN := $(ROOT_DIR)/tests/roms/dormann_6502_interrupt.bin
+test-dormann-irq: sim
+	@echo ">>> Klaus Dormann 6502 interrupt test"
+	@mkdir -p $(ROOT_DIR)/build
+	@$(SIM_BIN) +mem=$(DORMANN_IRQ_BIN) +load_addr=0x000A +reset_vec=0x0400 \
+	    +io_port=0xBFFC +cycles=10000000 +halt_on_loop +notrace \
+	    2>$(ROOT_DIR)/build/dormann_irq.out; \
+	if grep -qF 'stuck at $$06F5' $(ROOT_DIR)/build/dormann_irq.out; then \
+	    echo "Dormann interrupt test PASS (trap at \$$06F5 = success macro)"; \
+	else \
+	    echo "Dormann interrupt test FAIL:"; \
+	    cat $(ROOT_DIR)/build/dormann_irq.out; exit 1; \
 	fi
 
 # ---- M9: synthesis + CI -----------------------------------------------------

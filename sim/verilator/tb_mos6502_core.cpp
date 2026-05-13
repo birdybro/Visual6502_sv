@@ -90,6 +90,20 @@ int main(int argc, char **argv) {
     int irq_at  = irq_at_s  ? static_cast<int>(parse_num(irq_at_s))  : -1;
     int irq_dur = irq_dur_s ? static_cast<int>(parse_num(irq_dur_s)) : 4;
     int nmi_at  = nmi_at_s  ? static_cast<int>(parse_num(nmi_at_s))  : -1;
+    // Memory-mapped IRQ/NMI feedback port (Klaus Dormann interrupt test):
+    // writes to this address latch a byte; bit 0 drives irq_n, bit 1 drives
+    // nmi_n. Bit value 0 = "assert" (active low). 0xFFFF = disabled.
+    const char *io_port_s    = get_plusarg(argc, argv, "io_port");
+    uint32_t io_port = io_port_s ? parse_num(io_port_s) : 0xFFFF;
+    // Klaus Dormann interrupt-test polarity (I_drive=1 / no DDR / NMI_bit=1):
+    // I_set macro SETS the bit (writes 1) = "turn on interrupt". So in the
+    // I_port latch, bit=1 = assert (active). At the chip's pins,
+    // irq_n / nmi_n are active-low: bit=1 → drive pin low.
+    //
+    // Initial state forced *after* the program load further down, so the
+    // ROM's fill bytes at io_port don't trigger a spurious assertion.
+    uint8_t  io_latch = 0x00;
+    uint8_t  io_latch_prev = 0x00;
 
     // +halt_on_loop: stop early once PC is observed in a tight self-loop
     // (the same fetch AB appearing twice in a row with sync=1). Useful for
@@ -105,6 +119,7 @@ int main(int argc, char **argv) {
     if (mem_path && mem_path[0] != '\0') {
         if (!load_binary(mem_path, load_addr)) return 2;
     }
+    if (io_port != 0xFFFF) mem[io_port] = io_latch;  // override any ROM fill
     mem[0xFFFC] = reset_vec & 0xFF;
     mem[0xFFFD] = (reset_vec >> 8) & 0xFF;
     if (irq_vec_s) {
@@ -161,6 +176,11 @@ int main(int argc, char **argv) {
     auto run_cycle = [&](int cycle_idx, bool emit_trace) -> void {
         if (!dut->rw) {
             mem[dut->address] = dut->data_out;
+            if (io_port != 0xFFFF && (dut->address & 0xFFFF) == io_port) {
+                io_latch = dut->data_out;
+                // Reading the port back returns the latched value.
+                mem[io_port] = io_latch;
+            }
         }
         dut->data_in = mem[dut->address];
 
@@ -202,16 +222,22 @@ int main(int argc, char **argv) {
     int last_sync_streak = 0;
     int final_stuck_at = -1;
     for (int c = 0; c < max_cycles && !Verilated::gotFinish(); ++c) {
-        if (irq_at >= 0 && c >= irq_at && c < irq_at + irq_dur) {
-            dut->irq_n = 0;
-        } else {
-            dut->irq_n = 1;
+        // Default pin state — overridden by the io_port hook below if active.
+        if (irq_at >= 0 && c >= irq_at && c < irq_at + irq_dur) dut->irq_n = 0;
+        else                                                    dut->irq_n = 1;
+        if (nmi_at >= 0 && c == nmi_at)         dut->nmi_n = 0;
+        else if (nmi_at >= 0 && c == nmi_at + 1) dut->nmi_n = 1;
+
+        // Memory-mapped IRQ/NMI feedback (Klaus Dormann polarity).
+        // Bit 0 (IRQ) and bit 1 (NMI) in the I_port latch: 1 = asserted.
+        // Drive irq_n / nmi_n directly as the inverse — the RTL has its
+        // own NMI falling-edge detector.
+        if (io_port != 0xFFFF) {
+            dut->irq_n = (io_latch & 0x01) ? 0 : 1;
+            dut->nmi_n = (io_latch & 0x02) ? 0 : 1;
+            io_latch_prev = io_latch;
         }
-        if (nmi_at >= 0 && c == nmi_at) {
-            dut->nmi_n = 0;
-        } else if (nmi_at >= 0 && c == nmi_at + 1) {
-            dut->nmi_n = 1;
-        }
+
         run_cycle(c, !notrace);
         if (halt_on_loop && dut->sync) {
             int ab = dut->address & 0xFFFF;

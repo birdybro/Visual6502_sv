@@ -126,6 +126,10 @@ Living checklist. Update as work progresses. Items marked `[x]` are done,
       CMP's carry-in was wired to the live C flag instead of being
       forced to 1; the RMW target-address latch used stale ad_hi_q for
       zero-page modes. Both fixed.
+- [x] Klaus Dormann 6502 interrupt test ROM end-to-end run — PASSES at
+      3037 cycles. PC reaches the `success` macro at $06F5 ("test
+      passed, no errors"). Memory-mapped feedback port at $BFFC drives
+      irq_n / nmi_n (bit 1 in the latched value = assertion).
 
 ## Milestone 9 — Synthesis polish
 

@@ -10,7 +10,7 @@ core is verified against those traces.
 
 ## Status
 
-**The CPU passes Klaus Dormann's 6502 functional test** end-to-end (~96 million cycles) and matches the Visual6502 silicon reference exactly across 2052 cycles of focused milestone tests. Run `make test-dormann` to verify.
+**The CPU passes both of Klaus Dormann's 6502 test ROMs** end-to-end — the functional test (~96M cycles, all documented opcodes including BCD edge cases) and the interrupt test (3037 cycles, IRQ/NMI/BRK timing via a memory-mapped feedback port at $BFFC). It also matches the Visual6502 silicon reference exactly across 2052 cycles of focused milestone tests. Run `make test-dormann test-dormann-irq` to verify.
 
 | Milestone | Status | Notes |
 |----|----|----|
